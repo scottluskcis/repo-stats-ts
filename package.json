@@ -1,7 +1,8 @@
 {
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "format": "prettier --write ."
   },
   "name": "repo-stats-queue",
   "version": "1.0.0",
@@ -11,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "prettier": "^2.8.8"
   }
 }
