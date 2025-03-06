@@ -9,3 +9,5 @@ We always use Prettier to format our code.
 We will use Jest for our unit tests.
 
 We will use winston as a Logger and have a createLogger function that exists to create an instance of this.
+
+We use tsx for compiling and running our code and we prefer to have any responses be for a more modern approach.
