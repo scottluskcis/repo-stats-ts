@@ -1,0 +1,4 @@
+# .copilotignore
+*.pem
+*.local
+*.queue.txt
