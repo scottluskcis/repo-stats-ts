@@ -10,3 +10,10 @@ export interface Logger {
 }
 
 export type RepositoryType = components['schemas']['repository'];
+
+export type RepositoryCsvRow = {
+  name: string;
+  full_name: string;
+  created_at: string;
+  archived: boolean;
+};

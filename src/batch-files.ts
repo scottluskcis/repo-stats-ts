@@ -1,7 +1,7 @@
-import { writeFileSync } from 'fs';
+import { writeFileSync, readdirSync, readFileSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { stringify } from 'csv-stringify';
-import { Logger, RepositoryType } from './types';
+import { Logger, RepositoryCsvRow, RepositoryType } from './types';
 
 export async function createBatchFiles({
   org,
@@ -47,7 +47,7 @@ export async function createBatchFiles({
   };
 
   for await (const repo of iterator) {
-    logger.debug(`Repo: ${repo}`);
+    logger.debug(`Repo: ${repo.name}`);
     batch.push({
       name: repo.name,
       full_name: repo.full_name,
@@ -75,7 +75,7 @@ async function writeReposToCsv(
   outputPath: string,
   append: boolean = false,
 ): Promise<void> {
-  const columns: (keyof RepositoryType)[] = [
+  const columns: (keyof RepositoryCsvRow)[] = [
     'name',
     'full_name',
     'created_at',
@@ -92,4 +92,28 @@ async function writeReposToCsv(
       }
     });
   });
+}
+
+export function getBatchFileNames(outputFolder: string): string[] {
+  return readdirSync(outputFolder).filter((file) => file.endsWith('.csv'));
+}
+
+export function processBatchFile(filePath: string): RepositoryCsvRow[] {
+  const fileContent = readFileSync(filePath, 'utf-8');
+  const rows: RepositoryCsvRow[] = [];
+  const lines = fileContent.split('\n');
+
+  for (const line of lines.slice(1)) {
+    // Skip header
+    if (!line.trim()) continue;
+    const [name, full_name, created_at, archived] = line.split(',');
+    rows.push({
+      name,
+      full_name,
+      created_at,
+      archived: archived === 'true',
+    });
+  }
+
+  return rows;
 }

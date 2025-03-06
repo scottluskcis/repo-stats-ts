@@ -3,7 +3,11 @@ import { createAuthConfig } from './auth';
 import { createLogger } from './logger';
 import { createOctokit, listReposForOrg } from './octokit';
 import { Logger } from './types';
-import { createBatchFiles } from './batch-files';
+import {
+  createBatchFiles,
+  getBatchFileNames,
+  processBatchFile,
+} from './batch-files';
 
 interface Arguments {
   accessToken?: string;
@@ -18,6 +22,7 @@ interface Arguments {
   privateKeyFile?: string | undefined;
   appInstallationId?: string | undefined;
   batchSize?: number;
+  createBatchFiles?: boolean;
 }
 
 const _init = (opts: Arguments): { logger: Logger; octokit: Octokit } => {
@@ -48,14 +53,38 @@ export async function run(opts: Arguments): Promise<void> {
     octokit,
   });
 
-  logger.debug('Creating batch files...');
-  await createBatchFiles({
-    org: opts.orgName,
-    iterator: reposIterator,
-    batchSize: opts.batchSize || 100,
-    outputFolder: `${opts.outputPath || './'}/batch_files`,
-    logger,
-  });
+  const batchFilesFolder = `${opts.outputPath || './'}/batch_files`;
+  if (opts.createBatchFiles) {
+    logger.debug('Creating batch files...');
+    await createBatchFiles({
+      org: opts.orgName,
+      iterator: reposIterator,
+      batchSize: opts.batchSize || 100,
+      outputFolder: batchFilesFolder,
+      logger,
+    });
+  }
+
+  logger.debug('Processing all batch files...');
+  await processAllBatchFiles({ outputFolder: batchFilesFolder, logger });
 
   logger.info('Stopping the application...');
+}
+
+export async function processAllBatchFiles({
+  outputFolder,
+  logger,
+}: {
+  outputFolder: string;
+  logger: Logger;
+}): Promise<void> {
+  const fileNames = getBatchFileNames(outputFolder);
+  logger.info(`Found ${fileNames.length} batch files.`);
+
+  for (const fileName of fileNames) {
+    const filePath = `${outputFolder}/${fileName}`;
+    const rows = processBatchFile(filePath);
+    logger.info(`Processed ${rows.length} rows from ${fileName}.`);
+    // You can do more with the rows here
+  }
 }
