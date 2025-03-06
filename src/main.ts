@@ -9,6 +9,7 @@ import {
   getBatchFileNames,
   moveFile,
   readReposFromFile,
+  appendReposToRetryFile,
 } from './file-utils';
 import {
   checkGhRepoStatsInstalled,
@@ -104,6 +105,32 @@ export async function run(opts: Arguments): Promise<void> {
   logger.info('Stopping the application...');
 }
 
+async function identifyFailedRepos({
+  filePath,
+  orgName,
+  outputPath,
+  logger,
+}: {
+  filePath: string;
+  orgName: string;
+  outputPath?: string;
+  logger: Logger;
+}): Promise<void> {
+  logger.info('Identifying repos that failed...');
+  const to_process = await readReposFromFile(filePath);
+  const processed_so_far = await getProcessedRepos(orgName);
+
+  const unprocessedRepos = to_process.filter(
+    (repo) => !processed_so_far.includes(repo),
+  );
+
+  if (unprocessedRepos.length > 0) {
+    const retryFilePath = `${outputPath || './'}/items_to_retry.csv`;
+    await appendReposToRetryFile(unprocessedRepos, retryFilePath);
+    logger.info(`Appended ${unprocessedRepos.length} repos to retry file.`);
+  }
+}
+
 async function runRepoStatsForBatches({
   outputFolder,
   logger,
@@ -129,7 +156,6 @@ async function runRepoStatsForBatches({
 
   for (const fileName of fileNames) {
     const filePath = `${outputFolder}/${fileName}`;
-    const to_process = await readReposFromFile(filePath);
 
     logger.info(`Processing file: ${fileName}`);
     const { success, error, output } = await runRepoStats(
@@ -146,6 +172,13 @@ async function runRepoStatsForBatches({
     } else {
       logger.error(`Failed to process file: ${fileName}`);
       logger.error(`Error: ${error?.message}`);
+
+      await identifyFailedRepos({
+        filePath,
+        orgName: opts.orgName,
+        outputPath: opts.outputPath,
+        logger,
+      });
     }
   }
 

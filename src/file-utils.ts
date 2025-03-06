@@ -156,3 +156,27 @@ export async function ensureOutputDirectoriesExist(
     }
   }
 }
+
+export async function appendReposToRetryFile(
+  repos: string[],
+  retryFilePath: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    stringify(
+      repos.map((repo) => [repo]),
+      { header: false },
+      async (err, output) => {
+        if (err) {
+          reject(err);
+        } else {
+          try {
+            await writeFile(retryFilePath, output, { flag: 'a' });
+            resolve();
+          } catch (writeError) {
+            reject(writeError);
+          }
+        }
+      },
+    );
+  });
+}
