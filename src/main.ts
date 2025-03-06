@@ -4,7 +4,12 @@ import { createLogger } from './logger';
 import { createOctokit, generateAppToken, listReposForOrg } from './octokit';
 import { Logger } from './types';
 import { createBatchFiles, getBatchFileNames } from './batch-files';
-import { checkGhRepoStatsInstalled, runRepoStats } from './repo-stats';
+import {
+  checkGhRepoStatsInstalled,
+  getProcessedRepos,
+  runRepoStats,
+} from './repo-stats';
+import { get } from 'http';
 
 interface Arguments {
   accessToken?: string;
@@ -104,8 +109,7 @@ async function runRepoStatsForBatches({
     logger.info(`Processing file: ${fileName}`);
     await runRepoStats(filePath, opts.orgName, appToken, 5, 10);
 
-    //const rows = await processBatchFile(filePath);
-    //logger.info(`Processed ${rows.length} rows from ${fileName}.`);
-    // You can do more with the rows here
+    const processed = await getProcessedRepos(opts.orgName);
+    logger.info(`Processed repos: ${processed.length}`);
   }
 }
