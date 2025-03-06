@@ -1,23 +1,59 @@
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
 
-export const checkGhRepoStatsInstalled = (): boolean => {
-  try {
-    const output = execSync('gh extension list', {
+export const checkGhRepoStatsInstalled = (): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    const process_to_run = spawn('gh', ['extension', 'list'], {
       env: process.env,
-    }).toString();
+    });
 
-    return (
-      output.includes('gh repo-stats') &&
-      output.includes('mona-actions/gh-repo-stats')
-    );
-  } catch (error) {
-    return false;
-  }
+    let output = '';
+
+    process_to_run.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+
+    process_to_run.on('close', (code) => {
+      if (code === 0) {
+        resolve(
+          output.includes('gh repo-stats') &&
+            output.includes('mona-actions/gh-repo-stats'),
+        );
+      } else {
+        resolve(false);
+      }
+    });
+
+    process_to_run.on('error', (error) => {
+      reject(error);
+    });
+  });
 };
 
-export function installRepoStatsExtension() {
-  execSync('gh extension install mona-actions/gh-repo-stats', {
-    env: process.env,
+export function installRepoStatsExtension(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const process_to_run = spawn(
+      'gh',
+      ['extension', 'install', 'mona-actions/gh-repo-stats'],
+      {
+        env: process.env,
+      },
+    );
+
+    process_to_run.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(
+          new Error(
+            `Failed to install gh-repo-stats extension with code ${code}`,
+          ),
+        );
+      }
+    });
+
+    process_to_run.on('error', (error) => {
+      reject(error);
+    });
   });
 }
 
@@ -27,20 +63,34 @@ export const runRepoStats = (
   accessToken: string,
   pageSize: number,
   extraPageSize: number,
-): void => {
-  execSync(
-    `gh repo-stats \
-       --org ${orgName} \
-       --token ${accessToken} \
-       --token-type app \
-       --repo-list "${file}" \
-       --output csv \
-       --repo-page-size ${pageSize} \
-       --extra-page-size ${extraPageSize} \
-       --hostname github.com`,
-    {
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const command = `gh repo-stats \
+      --org ${orgName} \
+      --token ${accessToken} \
+      --token-type app \
+      --repo-list "${file}" \
+      --output csv \
+      --repo-page-size ${pageSize} \
+      --extra-page-size ${extraPageSize} \
+      --hostname github.com`;
+
+    const process_to_run = spawn(command, {
+      shell: true,
       stdio: 'inherit',
       env: process.env,
-    },
-  );
+    });
+
+    process_to_run.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Failed to run repo-stats with code ${code}`));
+      }
+    });
+
+    process_to_run.on('error', (error) => {
+      reject(error);
+    });
+  });
 };

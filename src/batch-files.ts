@@ -73,19 +73,11 @@ export async function createBatchFiles({
 async function writeReposToCsv(
   repos: RepositoryType[],
   outputPath: string,
-  append: boolean = false,
 ): Promise<void> {
-  const columns: (keyof RepositoryCsvRow)[] = [
-    'name',
-    'full_name',
-    'created_at',
-    'archived',
-  ];
-
   return new Promise((resolve, reject) => {
     stringify(
       repos,
-      { header: !append, columns: columns },
+      { header: false, columns: ['name'] },
       async (err, output) => {
         if (err) {
           reject(err);
@@ -107,26 +99,4 @@ export async function getBatchFileNames(
 ): Promise<string[]> {
   const files = await readdir(outputFolder);
   return files.filter((file) => file.endsWith('.csv'));
-}
-
-export async function processBatchFile(
-  filePath: string,
-): Promise<RepositoryCsvRow[]> {
-  const fileContent = await readFile(filePath, 'utf-8');
-  const rows: RepositoryCsvRow[] = [];
-  const lines = fileContent.split('\n');
-
-  for (const line of lines.slice(1)) {
-    // Skip header
-    if (!line.trim()) continue;
-    const [name, full_name, created_at, archived] = line.split(',');
-    rows.push({
-      name,
-      full_name,
-      created_at,
-      archived: archived === 'true',
-    });
-  }
-
-  return rows;
 }
