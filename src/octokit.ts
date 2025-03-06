@@ -7,7 +7,7 @@ import {
 import { Octokit, RequestError } from 'octokit';
 import { paginateGraphQL } from '@octokit/plugin-paginate-graphql';
 import { throttling } from '@octokit/plugin-throttling';
-import { Logger, LoggerFn } from './types';
+import { Logger, LoggerFn, RepositoryType } from './types';
 import { AuthConfig } from './auth';
 
 const OctokitWithPlugins = Octokit.plugin(paginateGraphQL).plugin(throttling);
@@ -85,7 +85,9 @@ export const createOctokit = (
         `${options.method} ${options.url}: ${error.status} - ${error.message}`,
       );
     } else {
-      logger.debug(`${options.method} ${options.url}: ${error.name} - ${error.message}`);
+      logger.debug(
+        `${options.method} ${options.url}: ${error.name} - ${error.message}`,
+      );
     }
 
     throw error;
@@ -93,3 +95,35 @@ export const createOctokit = (
 
   return octokit;
 };
+
+const octokit_headers = {
+  'X-GitHub-Api-Version': '2022-11-28',
+};
+
+// get the repos for the org
+export async function* listReposForOrg({
+  org,
+  per_page,
+  octokit,
+}: {
+  org: string;
+  per_page: number;
+  octokit: Octokit;
+}): AsyncGenerator<RepositoryType> {
+  const iterator = await octokit.paginate.iterator(
+    octokit.rest.repos.listForOrg,
+    {
+      org,
+      type: 'all',
+      per_page: per_page,
+      page: 1,
+      headers: octokit_headers,
+    },
+  );
+
+  for await (const { data: repos } of iterator) {
+    for (const repo of repos) {
+      yield repo;
+    }
+  }
+}

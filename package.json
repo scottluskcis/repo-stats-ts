@@ -28,6 +28,7 @@
   "dependencies": {
     "@fast-csv/parse": "^5.0.2",
     "@octokit/graphql": "^8.2.1",
+    "@octokit/openapi-types": "^24.0.0",
     "@octokit/plugin-paginate-graphql": "^5.2.4",
     "@octokit/plugin-throttling": "^9.4.0",
     "csv-stringify": "^6.5.2",

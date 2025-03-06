@@ -1,7 +1,9 @@
 import { Octokit } from 'octokit';
 import { createAuthConfig } from './auth';
 import { createLogger } from './logger';
-import { createOctokit } from './octokit';
+import { createOctokit, listReposForOrg } from './octokit';
+import { Logger } from './types';
+import { createBatchFiles } from './batch-files';
 
 interface Arguments {
   accessToken?: string;
@@ -18,7 +20,7 @@ interface Arguments {
   batchSize?: number;
 }
 
-export async function run(opts: Arguments): Promise<void> {
+const _init = (opts: Arguments): { logger: Logger; octokit: Octokit } => {
   const logger = createLogger(opts.verbose);
   logger.info('Starting the application...');
 
@@ -33,72 +35,27 @@ export async function run(opts: Arguments): Promise<void> {
     logger,
   );
 
+  return { logger, octokit };
+};
+
+export async function run(opts: Arguments): Promise<void> {
+  const { logger, octokit } = _init(opts);
+
   logger.debug('Getting all repos for org...');
-  const repos_iterator = getAllReposForOrg({
+  const reposIterator = listReposForOrg({
     org: opts.orgName,
     per_page: opts.batchSize || 100,
     octokit,
   });
 
-  let repoCount = 0;
-  let batchCount = 0;
-  const batchSize = opts.batchSize || 100;
+  logger.debug('Creating batch files...');
+  await createBatchFiles({
+    org: opts.orgName,
+    iterator: reposIterator,
+    batchSize: opts.batchSize || 100,
+    outputFolder: `${opts.outputPath || './'}/batch_files`,
+    logger,
+  });
 
-  for await (const repo of repos_iterator) {
-    logger.debug(`Repo: ${repo}`);
-    repoCount++;
-
-    if (repoCount % batchSize === 0) {
-      batchCount++;
-      logger.info(
-        `Processed batch ${batchCount} (${repoCount} repositories so far)`,
-      );
-    }
-  }
-
-  // Log final batch if there are remaining items
-  if (repoCount % batchSize !== 0) {
-    batchCount++;
-    logger.info(
-      `Processed final batch ${batchCount} (total repositories: ${repoCount})`,
-    );
-  }
-
-  logger.debug('Finished getting all repos for org.');
-  logger.info(
-    `Completed processing ${batchCount} batches (${repoCount} total repositories)`,
-  );
   logger.info('Stopping the application...');
-}
-
-const octokit_headers = {
-  'X-GitHub-Api-Version': '2022-11-28',
-};
-
-// get the repos for the org
-async function* getAllReposForOrg({
-  org,
-  per_page,
-  octokit,
-}: {
-  org: string;
-  per_page: number;
-  octokit: Octokit;
-}): AsyncGenerator<string> {
-  const iterator = await octokit.paginate.iterator(
-    octokit.rest.repos.listForOrg,
-    {
-      org,
-      type: 'all',
-      per_page: per_page,
-      page: 1,
-      headers: octokit_headers,
-    },
-  );
-
-  for await (const { data: repos } of iterator) {
-    for (const repo of repos) {
-      yield repo.name;
-    }
-  }
 }
