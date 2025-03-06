@@ -5,7 +5,9 @@ import { createOctokit, generateAppToken, listReposForOrg } from './octokit';
 import { Logger } from './types';
 import {
   createBatchFiles,
+  ensureOutputDirectoriesExist,
   getBatchFileNames,
+  moveFile,
   readReposFromFile,
 } from './file-utils';
 import {
@@ -33,7 +35,13 @@ interface Arguments {
 
 const _init = async (
   opts: Arguments,
-): Promise<{ logger: Logger; octokit: Octokit; appToken: string }> => {
+): Promise<{
+  logger: Logger;
+  octokit: Octokit;
+  appToken: string;
+  batchFilesFolder: string;
+  processedFilesFolder: string;
+}> => {
   const logger = createLogger(opts.verbose);
   logger.info('Starting the application...');
 
@@ -48,13 +56,23 @@ const _init = async (
     logger,
   );
 
+  logger.debug('Generating ocotokit app token...');
   const appToken = await generateAppToken({ octokit });
 
-  return { logger, octokit, appToken };
+  logger.debug('Ensuring output directories exist...');
+  const batchFilesFolder = `${opts.outputPath || './'}/batch_files`;
+  const processedFilesFolder = `${opts.outputPath || './'}/processed_files`;
+  ensureOutputDirectoriesExist(
+    [batchFilesFolder, processedFilesFolder],
+    logger,
+  );
+
+  return { logger, octokit, appToken, batchFilesFolder, processedFilesFolder };
 };
 
 export async function run(opts: Arguments): Promise<void> {
-  const { logger, octokit, appToken } = await _init(opts);
+  const { logger, octokit, appToken, batchFilesFolder, processedFilesFolder } =
+    await _init(opts);
 
   logger.debug('Getting all repos for org...');
   const reposIterator = listReposForOrg({
@@ -63,7 +81,6 @@ export async function run(opts: Arguments): Promise<void> {
     octokit,
   });
 
-  const batchFilesFolder = `${opts.outputPath || './'}/batch_files`;
   if (opts.createBatchFiles) {
     logger.debug('Creating batch files...');
     await createBatchFiles({
@@ -81,6 +98,7 @@ export async function run(opts: Arguments): Promise<void> {
     logger,
     opts,
     appToken,
+    processedFilesFolder,
   });
 
   logger.info('Stopping the application...');
@@ -91,11 +109,13 @@ async function runRepoStatsForBatches({
   logger,
   opts,
   appToken,
+  processedFilesFolder,
 }: {
   outputFolder: string;
   logger: Logger;
   opts: Arguments;
   appToken: string;
+  processedFilesFolder: string;
 }): Promise<void> {
   if (!checkGhRepoStatsInstalled()) {
     logger.error('gh repo-stats is not installed. Please install it first.');
@@ -122,6 +142,7 @@ async function runRepoStatsForBatches({
 
     if (success) {
       logger.info(`Successfully processed file: ${fileName}`);
+      moveFile(filePath, processedFilesFolder);
     } else {
       logger.error(`Failed to process file: ${fileName}`);
       logger.error(`Error: ${error?.message}`);

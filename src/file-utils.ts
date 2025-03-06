@@ -1,8 +1,8 @@
-import { writeFile, readdir } from 'fs/promises';
-import { mkdir } from 'fs/promises';
+import { createReadStream } from 'fs';
+import { writeFile, readdir, rename, mkdir } from 'fs/promises';
+import { join } from 'path';
 import { stringify } from 'csv-stringify';
 import { parse } from '@fast-csv/parse';
-import { createReadStream } from 'fs';
 import { Logger, RepositoryType } from './types';
 
 export async function createBatchFiles({
@@ -18,15 +18,6 @@ export async function createBatchFiles({
   outputFolder: string;
   logger: Logger;
 }) {
-  // Ensure output directory exists
-  try {
-    await mkdir(outputFolder, { recursive: true });
-    logger.debug(`Ensured output directory exists: ${outputFolder}`);
-  } catch (error) {
-    logger.error(`Failed to create output directory: ${error}`);
-    throw error;
-  }
-
   let repoCount = 0;
   let batchCount = 0;
   let batch: any[] = [];
@@ -119,4 +110,49 @@ export async function readReposFromFile(filePath: string): Promise<string[]> {
       )
       .on('end', () => resolve(repos));
   });
+}
+
+export async function moveFile(
+  filePath: string,
+  destinationFolder: string,
+): Promise<void> {
+  try {
+    const fileName = filePath.split('/').pop();
+    if (!fileName) {
+      throw new Error('Invalid file path');
+    }
+
+    // Split filename into name and extension
+    const [name, extension] = fileName.split('.');
+
+    // Create timestamp in format YYYYMMDD_HHmmss
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:-]/g, '')
+      .replace(/\..+/, '')
+      .replace('T', '_');
+
+    // Create new filename with timestamp
+    const newFileName = `${name}_${timestamp}.${extension}`;
+    const destinationPath = join(destinationFolder, newFileName);
+
+    await rename(filePath, destinationPath);
+  } catch (error) {
+    throw new Error(`Failed to move file: ${error}`);
+  }
+}
+
+export async function ensureOutputDirectoriesExist(
+  outputFolders: string[],
+  logger: Logger,
+): Promise<void> {
+  for (const folder of outputFolders) {
+    try {
+      await mkdir(folder, { recursive: true });
+      logger.debug(`Ensured output directory exists: ${folder}`);
+    } catch (error) {
+      logger.error(`Failed to create output directory: ${error}`);
+      throw error;
+    }
+  }
 }
