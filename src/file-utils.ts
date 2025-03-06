@@ -1,7 +1,9 @@
-import { writeFile, readdir, readFile } from 'fs/promises';
+import { writeFile, readdir } from 'fs/promises';
 import { mkdir } from 'fs/promises';
 import { stringify } from 'csv-stringify';
-import { Logger, RepositoryCsvRow, RepositoryType } from './types';
+import { parse } from '@fast-csv/parse';
+import { createReadStream } from 'fs';
+import { Logger, RepositoryType } from './types';
 
 export async function createBatchFiles({
   org,
@@ -99,4 +101,22 @@ export async function getBatchFileNames(
 ): Promise<string[]> {
   const files = await readdir(outputFolder);
   return files.filter((file) => file.endsWith('.csv'));
+}
+
+export async function readReposFromFile(filePath: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const repos: string[] = [];
+
+    createReadStream(filePath)
+      .pipe(parse({ headers: false }))
+      .on('data', ([repoName]: string[]) => {
+        if (repoName && repoName.trim()) {
+          repos.push(repoName.trim());
+        }
+      })
+      .on('error', (error) =>
+        reject(new Error(`Failed to read repositories from file: ${error}`)),
+      )
+      .on('end', () => resolve(repos));
+  });
 }

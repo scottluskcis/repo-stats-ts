@@ -3,7 +3,11 @@ import { createAuthConfig } from './auth';
 import { createLogger } from './logger';
 import { createOctokit, generateAppToken, listReposForOrg } from './octokit';
 import { Logger } from './types';
-import { createBatchFiles, getBatchFileNames } from './batch-files';
+import {
+  createBatchFiles,
+  getBatchFileNames,
+  readReposFromFile,
+} from './file-utils';
 import {
   checkGhRepoStatsInstalled,
   getProcessedRepos,
@@ -105,11 +109,25 @@ async function runRepoStatsForBatches({
 
   for (const fileName of fileNames) {
     const filePath = `${outputFolder}/${fileName}`;
+    const to_process = await readReposFromFile(filePath);
 
     logger.info(`Processing file: ${fileName}`);
-    await runRepoStats(filePath, opts.orgName, appToken, 5, 10);
+    const { success, error, output } = await runRepoStats(
+      filePath,
+      opts.orgName,
+      appToken,
+      5,
+      10,
+    );
 
-    const processed = await getProcessedRepos(opts.orgName);
-    logger.info(`Processed repos: ${processed.length}`);
+    if (success) {
+      logger.info(`Successfully processed file: ${fileName}`);
+    } else {
+      logger.error(`Failed to process file: ${fileName}`);
+      logger.error(`Error: ${error?.message}`);
+    }
   }
+
+  const processed = await getProcessedRepos(opts.orgName);
+  logger.info(`Processed repos: ${processed.length}`);
 }

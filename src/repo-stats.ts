@@ -68,7 +68,11 @@ export async function runRepoStats(
   accessToken: string,
   pageSize: number,
   extraPageSize: number,
-): Promise<void> {
+): Promise<{
+  success: boolean;
+  output: string | undefined | null;
+  error: Error | undefined | null;
+}> {
   const command = `gh repo-stats \
     --org ${orgName} \
     --token ${accessToken} \
@@ -84,9 +88,14 @@ export async function runRepoStats(
     stdio: 'inherit',
   });
 
-  if (result.code !== 0) {
-    throw new Error(`Failed to run repo-stats with code ${result.code}`);
-  }
+  const success = result.code === 0;
+  const output = result.output;
+  const error =
+    result.code !== 0
+      ? new Error(`Failed to run repo-stats with code ${result.code}`)
+      : null;
+
+  return { success, output, error };
 }
 
 export async function getProcessedRepos(orgName: string): Promise<string[]> {
