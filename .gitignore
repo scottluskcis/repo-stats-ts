@@ -23,3 +23,5 @@ logs/
 *.csv
 *.queue.txt
 *-retry-queue.txt
+
+keys/
