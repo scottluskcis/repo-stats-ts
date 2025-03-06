@@ -78,12 +78,12 @@ export async function processAllBatchFiles({
   outputFolder: string;
   logger: Logger;
 }): Promise<void> {
-  const fileNames = getBatchFileNames(outputFolder);
+  const fileNames = await getBatchFileNames(outputFolder);
   logger.info(`Found ${fileNames.length} batch files.`);
 
   for (const fileName of fileNames) {
     const filePath = `${outputFolder}/${fileName}`;
-    const rows = processBatchFile(filePath);
+    const rows = await processBatchFile(filePath);
     logger.info(`Processed ${rows.length} rows from ${fileName}.`);
     // You can do more with the rows here
   }

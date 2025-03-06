@@ -1,4 +1,4 @@
-import { writeFileSync, readdirSync, readFileSync } from 'fs';
+import { writeFile, readdir, readFile } from 'fs/promises';
 import { mkdir } from 'fs/promises';
 import { stringify } from 'csv-stringify';
 import { Logger, RepositoryCsvRow, RepositoryType } from './types';
@@ -83,23 +83,36 @@ async function writeReposToCsv(
   ];
 
   return new Promise((resolve, reject) => {
-    stringify(repos, { header: !append, columns: columns }, (err, output) => {
-      if (err) {
-        reject(err);
-      } else {
-        writeFileSync(outputPath, output);
-        resolve();
-      }
-    });
+    stringify(
+      repos,
+      { header: !append, columns: columns },
+      async (err, output) => {
+        if (err) {
+          reject(err);
+        } else {
+          try {
+            await writeFile(outputPath, output);
+            resolve();
+          } catch (writeError) {
+            reject(writeError);
+          }
+        }
+      },
+    );
   });
 }
 
-export function getBatchFileNames(outputFolder: string): string[] {
-  return readdirSync(outputFolder).filter((file) => file.endsWith('.csv'));
+export async function getBatchFileNames(
+  outputFolder: string,
+): Promise<string[]> {
+  const files = await readdir(outputFolder);
+  return files.filter((file) => file.endsWith('.csv'));
 }
 
-export function processBatchFile(filePath: string): RepositoryCsvRow[] {
-  const fileContent = readFileSync(filePath, 'utf-8');
+export async function processBatchFile(
+  filePath: string,
+): Promise<RepositoryCsvRow[]> {
+  const fileContent = await readFile(filePath, 'utf-8');
   const rows: RepositoryCsvRow[] = [];
   const lines = fileContent.split('\n');
 
