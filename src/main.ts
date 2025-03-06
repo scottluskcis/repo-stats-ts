@@ -102,7 +102,7 @@ async function runRepoStatsForBatches({
     const filePath = `${outputFolder}/${fileName}`;
 
     logger.info(`Processing file: ${fileName}`);
-    runRepoStats(filePath, opts.orgName, appToken, opts.batchSize || 100);
+    runRepoStats(filePath, opts.orgName, appToken, 5, 10);
 
     //const rows = await processBatchFile(filePath);
     //logger.info(`Processed ${rows.length} rows from ${fileName}.`);
