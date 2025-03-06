@@ -17,3 +17,9 @@ logs/
 
 # Ignore environment variable files
 .env
+
+*.local.sh
+*.pem
+*.csv
+*.queue.txt
+*-retry-queue.txt
