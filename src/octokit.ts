@@ -127,3 +127,15 @@ export async function* listReposForOrg({
     }
   }
 }
+
+export async function generateAppToken({
+  octokit,
+}: {
+  octokit: Octokit;
+}): Promise<string> {
+  const appToken = await octokit.auth({
+    type: 'installation',
+  });
+  process.env.GH_TOKEN = appToken.token;
+  return appToken.token;
+}

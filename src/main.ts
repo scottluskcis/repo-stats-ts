@@ -1,13 +1,10 @@
 import { Octokit } from 'octokit';
 import { createAuthConfig } from './auth';
 import { createLogger } from './logger';
-import { createOctokit, listReposForOrg } from './octokit';
+import { createOctokit, generateAppToken, listReposForOrg } from './octokit';
 import { Logger } from './types';
-import {
-  createBatchFiles,
-  getBatchFileNames,
-  processBatchFile,
-} from './batch-files';
+import { createBatchFiles, getBatchFileNames } from './batch-files';
+import { checkGhRepoStatsInstalled, runRepoStats } from './repo-stats';
 
 interface Arguments {
   accessToken?: string;
@@ -25,7 +22,9 @@ interface Arguments {
   createBatchFiles?: boolean;
 }
 
-const _init = (opts: Arguments): { logger: Logger; octokit: Octokit } => {
+const _init = async (
+  opts: Arguments,
+): Promise<{ logger: Logger; octokit: Octokit; appToken: string }> => {
   const logger = createLogger(opts.verbose);
   logger.info('Starting the application...');
 
@@ -40,11 +39,13 @@ const _init = (opts: Arguments): { logger: Logger; octokit: Octokit } => {
     logger,
   );
 
-  return { logger, octokit };
+  const appToken = await generateAppToken({ octokit });
+
+  return { logger, octokit, appToken };
 };
 
 export async function run(opts: Arguments): Promise<void> {
-  const { logger, octokit } = _init(opts);
+  const { logger, octokit, appToken } = await _init(opts);
 
   logger.debug('Getting all repos for org...');
   const reposIterator = listReposForOrg({
@@ -66,25 +67,45 @@ export async function run(opts: Arguments): Promise<void> {
   }
 
   logger.debug('Processing all batch files...');
-  await processAllBatchFiles({ outputFolder: batchFilesFolder, logger });
+  await runRepoStatsForBatches({
+    outputFolder: batchFilesFolder,
+    logger,
+    opts,
+    appToken,
+  });
 
   logger.info('Stopping the application...');
 }
 
-export async function processAllBatchFiles({
+async function runRepoStatsForBatches({
   outputFolder,
   logger,
+  opts,
+  appToken,
 }: {
   outputFolder: string;
   logger: Logger;
+  opts: Arguments;
+  appToken: string;
 }): Promise<void> {
+  if (!checkGhRepoStatsInstalled()) {
+    logger.error('gh repo-stats is not installed. Please install it first.');
+    return;
+  } else {
+    logger.info('gh repo-stats is installed.');
+  }
+
   const fileNames = await getBatchFileNames(outputFolder);
   logger.info(`Found ${fileNames.length} batch files.`);
 
   for (const fileName of fileNames) {
     const filePath = `${outputFolder}/${fileName}`;
-    const rows = await processBatchFile(filePath);
-    logger.info(`Processed ${rows.length} rows from ${fileName}.`);
+
+    logger.info(`Processing file: ${fileName}`);
+    runRepoStats(filePath, opts.orgName, appToken, opts.batchSize || 100);
+
+    //const rows = await processBatchFile(filePath);
+    //logger.info(`Processed ${rows.length} rows from ${fileName}.`);
     // You can do more with the rows here
   }
 }
