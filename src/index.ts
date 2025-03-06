@@ -17,6 +17,7 @@ run({
   verbose: process.env.VERBOSE === 'true',
   appId: process.env.APP_ID,
   privateKey: process.env.PRIVATE_KEY,
+  privateKeyFile: process.env.PRIVATE_KEY_FILE,
   appInstallationId: process.env.APP_INSTALLATION_ID,
 }).catch((error) => {
   console.error('An error occurred:', error);
