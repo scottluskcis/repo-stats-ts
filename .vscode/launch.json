@@ -6,11 +6,7 @@
       "request": "launch",
       "name": "Debug TypeScript",
       "skipFiles": ["<node_internals>/**"],
-      "runtimeArgs": [
-        "--nolazy",
-        "-r", 
-        "ts-node/register"
-      ],
+      "runtimeExecutable": "tsx",  // Add this line
       "program": "${workspaceFolder}/src/index.ts",
       "sourceMaps": true,
       "cwd": "${workspaceFolder}",
