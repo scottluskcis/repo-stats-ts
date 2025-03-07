@@ -81,6 +81,9 @@ const _init = async (
   };
 };
 
+const sleep = (seconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+
 async function processRepositoryBatches(
   fileNames: string[],
   maxAttempts: number,
@@ -99,6 +102,14 @@ async function processRepositoryBatches(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     logBatchProcessing.attempt(attempt, maxAttempts, params.logger);
+
+    if (attempt > 1) {
+      const delaySeconds = params.opts.retryDelaySeconds || 5;
+      params.logger.info(
+        `Waiting ${delaySeconds} seconds before retry attempt ${attempt}...`,
+      );
+      await sleep(delaySeconds);
+    }
 
     const result = await runRepoStatsForBatches({
       outputFolder: params.batchFilesFolder,

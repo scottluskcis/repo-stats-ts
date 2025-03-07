@@ -22,6 +22,7 @@ export interface Arguments {
   batchSize?: number;
   createBatchFiles?: boolean;
   maxRetryAttempts?: number;
+  retryDelaySeconds?: number;
 }
 
 export interface ProcessingSummary {
