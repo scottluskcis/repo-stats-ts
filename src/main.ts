@@ -272,6 +272,7 @@ async function runRepoStatsForBatches({
       appToken,
       opts.pageSize || 5,
       opts.extraPageSize || 10,
+      logger,
     );
 
     if (success) {

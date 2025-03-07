@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { parse } from '@fast-csv/parse';
 import { readdir } from 'fs/promises';
 import { createReadStream } from 'fs';
+import { Logger } from './types';
 
 interface SpawnResult {
   code: number;
@@ -11,7 +12,7 @@ interface SpawnResult {
 async function spawnProcess(
   command: string,
   args: string[],
-  options?: { shell?: boolean; stdio?: 'pipe' | 'inherit' },
+  options?: { shell?: boolean; stdio?: 'pipe' | 'inherit'; logger?: Logger },
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
     const defaultOptions = {
@@ -25,11 +26,24 @@ async function spawnProcess(
 
     if (process_to_run.stdout) {
       process_to_run.stdout.on('data', (data) => {
-        output += data.toString();
+        const chunk = data.toString();
+        output += chunk;
+        // Log real-time output if logger is provided
+        options?.logger?.debug(chunk.trim());
+      });
+    }
+
+    if (process_to_run.stderr) {
+      process_to_run.stderr.on('data', (data) => {
+        const chunk = data.toString();
+        output += chunk;
+        // Log real-time errors if logger is provided
+        options?.logger?.error(chunk.trim());
       });
     }
 
     process_to_run.on('close', (code) => {
+      options?.logger?.info(`Process exited with code ${code}`);
       resolve({ code: code ?? 0, output });
     });
 
@@ -38,7 +52,6 @@ async function spawnProcess(
     });
   });
 }
-
 export async function checkGhRepoStatsInstalled(): Promise<boolean> {
   const result = await spawnProcess('gh', ['extension', 'list']);
   return (
@@ -68,11 +81,18 @@ export async function runRepoStats(
   accessToken: string,
   pageSize: number,
   extraPageSize: number,
+  logger?: Logger, // Add logger parameter
 ): Promise<{
   success: boolean;
   output: string | undefined | null;
   error: Error | undefined | null;
 }> {
+  // let dots = '';
+  // const progressInterval = setInterval(() => {
+  //   dots = dots.length >= 3 ? '' : dots + '.';
+  //   logger?.info(`Processing ${file} ${dots}`);
+  // }, 1000);
+
   const command = `gh repo-stats \
     --org ${orgName} \
     --token ${accessToken} \
@@ -83,19 +103,38 @@ export async function runRepoStats(
     --extra-page-size ${extraPageSize} \
     --hostname github.com`;
 
-  const result = await spawnProcess(command, [], {
-    shell: true,
-    stdio: 'inherit',
-  });
+  try {
+    const result = await spawnProcess(command, [], {
+      shell: true,
+      stdio: 'pipe',
+      logger,
+    });
 
-  const success = result.code === 0;
-  const output = result.output;
-  const error =
-    result.code !== 0
-      ? new Error(`Failed to run repo-stats with code ${result.code}`)
-      : null;
+    //clearInterval(progressInterval);
 
-  return { success, output, error };
+    if (result.code !== 0) {
+      return {
+        success: false,
+        output: result.output,
+        error: new Error(
+          `Failed to run repo-stats with code ${result.code}: ${result.output}`,
+        ),
+      };
+    }
+
+    return {
+      success: true,
+      output: result.output,
+      error: null,
+    };
+  } catch (error) {
+    //clearInterval(progressInterval);
+    return {
+      success: false,
+      output: null,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
 }
 
 export async function getProcessedRepos(orgName: string): Promise<string[]> {
