@@ -1,57 +1,82 @@
-import { spawn, ChildProcess } from 'child_process';
 import { parse } from '@fast-csv/parse';
 import { readdir } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { Logger } from './types';
+import { execa } from 'execa';
+import { parse as parseCommand } from 'shell-quote';
 
 interface SpawnResult {
-  code: number;
+  code: number | undefined;
   output: string;
 }
 
+// uses execa Library This is a modern, Promise-based library that handles process execution much more reliably
 async function spawnProcess(
   command: string,
   args: string[],
   options?: { shell?: boolean; stdio?: 'pipe' | 'inherit'; logger?: Logger },
 ): Promise<SpawnResult> {
-  return new Promise((resolve, reject) => {
-    const defaultOptions = {
-      env: process.env,
+  try {
+    const { stdout, stderr, exitCode } = await execa(command, args, {
       shell: options?.shell ?? false,
-      stdio: options?.stdio ?? 'pipe',
+      env: process.env,
+      reject: true, // Will reject on non-zero exit codes
+    });
+
+    // Log output in real-time
+    if (stdout) {
+      options?.logger?.debug(stdout);
+    }
+    if (stderr) {
+      options?.logger?.error(stderr);
+    }
+
+    return {
+      code: exitCode,
+      output: stdout + (stderr ? `\n${stderr}` : ''),
     };
-
-    const process_to_run = spawn(command, args, defaultOptions);
-    let output = '';
-
-    if (process_to_run.stdout) {
-      process_to_run.stdout.on('data', (data) => {
-        const chunk = data.toString();
-        output += chunk;
-        // Log real-time output if logger is provided
-        options?.logger?.debug(chunk.trim());
-      });
+  } catch (error) {
+    if (error instanceof Error) {
+      options?.logger?.error(`Process failed: ${error.message}`);
+      throw error;
     }
-
-    if (process_to_run.stderr) {
-      process_to_run.stderr.on('data', (data) => {
-        const chunk = data.toString();
-        output += chunk;
-        // Log real-time errors if logger is provided
-        options?.logger?.error(chunk.trim());
-      });
-    }
-
-    process_to_run.on('close', (code) => {
-      options?.logger?.info(`Process exited with code ${code}`);
-      resolve({ code: code ?? 0, output });
-    });
-
-    process_to_run.on('error', (error) => {
-      reject(error);
-    });
-  });
+    throw new Error('Unknown error occurred during process execution');
+  }
 }
+
+// uses approach: node-shell-quote with execa For more complex shell commands that need proper escaping
+async function executeCommand(
+  commandString: string,
+  options?: { logger?: Logger },
+): Promise<SpawnResult> {
+  const parsed = parseCommand(commandString);
+  const [command, ...args] = parsed.filter(
+    (arg) => typeof arg === 'string',
+  ) as string[];
+
+  try {
+    const { stdout, stderr, exitCode } = await execa(command, args, {
+      shell: true,
+      env: process.env,
+      reject: true,
+    });
+
+    options?.logger?.debug(stdout);
+    if (stderr) options?.logger?.error(stderr);
+
+    return {
+      code: exitCode,
+      output: stdout + (stderr ? `\n${stderr}` : ''),
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      options?.logger?.error(`Command failed: ${error.message}`);
+      throw error;
+    }
+    throw new Error('Unknown error occurred during command execution');
+  }
+}
+
 export async function checkGhRepoStatsInstalled(): Promise<boolean> {
   const result = await spawnProcess('gh', ['extension', 'list']);
   return (
