@@ -46,12 +46,12 @@ const _init = async (
   failedFilesFolder: string;
 }> => {
   const logger = createLogger(opts.verbose);
-  logger.info('Starting the application...');
+  logger.info('Initializing repo-stats-queue application...');
 
-  logger.debug('Creating auth config from environment variables...');
+  logger.debug('Creating auth config...');
   const authConfig = createAuthConfig({ ...opts, logger: logger });
 
-  logger.debug('Creating octokit instance...');
+  logger.debug('Initializing octokit client...');
   const octokit = createOctokit(
     authConfig,
     opts.baseUrl,
@@ -59,10 +59,10 @@ const _init = async (
     logger,
   );
 
-  logger.debug('Generating ocotokit app token...');
+  logger.debug('Generating app token...');
   const appToken = await generateAppToken({ octokit });
 
-  logger.debug('Ensuring output directories exist...');
+  logger.debug('Setting up output directories...');
   const batchFilesFolder = `${opts.outputPath || './'}/batch_files`;
   const processedFilesFolder = `${opts.outputPath || './'}/processed_files`;
   const failedFilesFolder = `${opts.outputPath || './'}/failed_files`;
@@ -92,7 +92,7 @@ export async function run(opts: Arguments): Promise<void> {
     failedFilesFolder,
   } = await _init(opts);
 
-  logger.debug('Getting all repos for org...');
+  logger.debug('Fetching repositories for organization...');
   const reposIterator = listReposForOrg({
     org: opts.orgName,
     per_page: opts.batchSize || 100,
@@ -100,7 +100,7 @@ export async function run(opts: Arguments): Promise<void> {
   });
 
   if (opts.createBatchFiles) {
-    logger.debug('Creating batch files...');
+    logger.info('Creating batch files for processing...');
     await createBatchFiles({
       org: opts.orgName,
       iterator: reposIterator,
@@ -110,21 +110,22 @@ export async function run(opts: Arguments): Promise<void> {
     });
   }
 
-  logger.debug('Getting batch file names...');
+  logger.debug('Reading batch files...');
   let fileNames = await getBatchFileNames(batchFilesFolder);
   const maxAttempts = opts.maxRetryAttempts || 3;
 
+  if (fileNames.length === 0) {
+    logger.info('No batch files found for processing');
+    return;
+  }
+
+  logger.info(`Starting batch processing with ${fileNames.length} files`);
   const results: ProcessingResult[] = [];
+  let totalRetried = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (fileNames.length === 0) {
-      logger.info('No files to process.');
-      break;
-    }
+    logger.info(`Processing attempt ${attempt} of ${maxAttempts}`);
 
-    logger.info(
-      `Processing batch files (Attempt ${attempt}/${maxAttempts})...`,
-    );
     const result = await runRepoStatsForBatches({
       outputFolder: batchFilesFolder,
       logger,
@@ -136,26 +137,28 @@ export async function run(opts: Arguments): Promise<void> {
     });
 
     results.push(result);
+    if (attempt > 1) {
+      totalRetried += result.successCount;
+    }
 
     if (result.filesToRetry.length === 0) {
-      logger.info('All files processed successfully.');
+      logger.info('✓ All files processed successfully');
       break;
     }
 
     if (attempt === maxAttempts) {
-      logger.error(
-        `Reached maximum number of retry attempts (${maxAttempts}). ${result.filesToRetry.length} files still need processing.`,
+      logger.warn(
+        `⚠ Maximum retry attempts (${maxAttempts}) reached. ${result.filesToRetry.length} files remain unprocessed`,
       );
       break;
     }
 
     logger.info(
-      `Attempt ${attempt}: ${result.filesToRetry.length} files need to be retried.`,
+      `⟳ ${result.filesToRetry.length} files scheduled for retry in next attempt`,
     );
     fileNames = result.filesToRetry;
   }
 
-  // Aggregate results
   const finalResults = results.reduce(
     (acc, curr) => ({
       successCount: acc.successCount + curr.successCount,
@@ -165,15 +168,24 @@ export async function run(opts: Arguments): Promise<void> {
     { successCount: 0, failureCount: 0, filesToRetry: [] as string[] },
   );
 
-  logger.info('Final processing results:');
-  logger.info(`- Successfully processed: ${finalResults.successCount} files`);
-  logger.info(`- Failed to process: ${finalResults.failureCount} files`);
+  logger.info('Processing Summary:');
+  logger.info(`✓ Initially processed: ${results[0]?.successCount || 0} files`);
+  if (totalRetried > 0) {
+    logger.info(`✓ Successfully retried: ${totalRetried} files`);
+  }
   logger.info(
-    `- Files requiring retry: ${finalResults.filesToRetry.length} files`,
+    `✓ Total successfully processed: ${finalResults.successCount} files`,
   );
-  logger.info(`- Total attempts made: ${results.length}`);
-
-  logger.info('Stopping the application...');
+  logger.info(
+    `✗ Failed to process: ${finalResults.failureCount} files that were attempted to be retried`,
+  );
+  if (finalResults.filesToRetry.length > 0) {
+    logger.warn(
+      `⚠ Unprocessed files remaining: ${finalResults.filesToRetry.length}`,
+    );
+  }
+  logger.debug(`Total processing attempts: ${results.length}`);
+  logger.info('Completed repo-stats-queue processing');
 }
 
 interface ProcessingResult {
@@ -200,12 +212,14 @@ async function runRepoStatsForBatches({
   fileNames: string[];
 }): Promise<ProcessingResult> {
   if (!checkGhRepoStatsInstalled()) {
-    logger.error('gh repo-stats is not installed. Please install it first.');
+    logger.error(
+      '❌ gh repo-stats tool not found. Please install it before proceeding',
+    );
     return { successCount: 0, failureCount: 0, filesToRetry: [] };
   }
 
-  logger.info('gh repo-stats is installed.');
-  logger.info(`Found ${fileNames.length} batch files.`);
+  logger.debug('gh repo-stats tool verification completed');
+  logger.info(`Processing ${fileNames.length} batch files`);
 
   let successCount = 0;
   let failureCount = 0;
@@ -213,21 +227,20 @@ async function runRepoStatsForBatches({
 
   for (const fileName of fileNames) {
     const filePath = `${outputFolder}/${fileName}`;
+    logger.debug(`Processing batch file: ${fileName}`);
 
-    logger.info(`Processing file: ${fileName}`);
     const { success, error } = fileName.endsWith('batch_3.csv')
       ? { success: false, error: new Error('test case') }
       : await runRepoStats(filePath, opts.orgName, appToken, 5, 10);
 
     if (success) {
-      logger.info(`Successfully processed file: ${fileName}`);
+      logger.debug(`✓ Batch file processed: ${fileName}`);
       moveFile(filePath, processedFilesFolder);
       successCount++;
     } else {
-      logger.error(`Failed to process file: ${fileName}`);
-      logger.error(`Error: ${error?.message}`);
+      logger.error(`✗ Failed to process batch file: ${fileName}`, error);
+      logger.debug('Identifying unprocessed repositories...');
 
-      logger.debug('Identifying failed repos...');
       const retryFile = await handleFailedProcessing({
         filePath,
         fileName,
@@ -246,7 +259,7 @@ async function runRepoStatsForBatches({
   }
 
   const processed = await getProcessedRepos(opts.orgName);
-  logger.info(`Processed repos: ${processed.length}`);
+  logger.info(`Total repositories processed: ${processed.length}`);
 
   return { successCount, failureCount, filesToRetry };
 }
@@ -308,7 +321,7 @@ async function handleFailedProcessing({
       fileName,
       processedFilesFolder,
     );
-    logger.info(`Created processed repos file for ${fileName}`);
+    logger.debug(`Created processed repos file for ${fileName}`);
   }
 
   let retryFileName: string | undefined;
@@ -318,11 +331,11 @@ async function handleFailedProcessing({
       fileName,
       outputFolder,
     );
-    logger.info(`Created retry file for ${fileName}`);
+    logger.debug(`Created retry file for ${fileName}`);
   }
 
   await moveFile(filePath, failedFilesFolder);
-  logger.info(`Moved original file to failed files folder: ${fileName}`);
+  logger.debug(`Moved original file to failed files folder: ${fileName}`);
 
   return retryFileName;
 }
