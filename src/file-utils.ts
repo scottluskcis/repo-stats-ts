@@ -215,11 +215,12 @@ export async function writeReposToRetryFile(
   repos: string[],
   fileName: string,
   outputFolder: string,
-): Promise<void> {
-  if (repos.length === 0) return;
+): Promise<string | undefined> {
+  if (repos.length === 0) return undefined;
 
   const fileNameWithoutExt = fileName.replace('.csv', '');
-  const retryFilePath = `${outputFolder}/${fileNameWithoutExt}_retry.csv`;
+  const retryFileName = `${fileNameWithoutExt}_retry.csv`;
+  const retryFilePath = `${outputFolder}/${retryFileName}`;
 
   return new Promise((resolve, reject) => {
     stringify(
@@ -231,7 +232,7 @@ export async function writeReposToRetryFile(
         } else {
           try {
             await writeFile(retryFilePath, output);
-            resolve();
+            resolve(retryFileName);
           } catch (writeError) {
             reject(writeError);
           }

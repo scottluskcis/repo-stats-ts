@@ -32,6 +32,7 @@ interface Arguments {
   appInstallationId?: string | undefined;
   batchSize?: number;
   createBatchFiles?: boolean;
+  maxRetryAttempts?: number;
 }
 
 const _init = async (
@@ -109,17 +110,76 @@ export async function run(opts: Arguments): Promise<void> {
     });
   }
 
-  logger.debug('Processing all batch files...');
-  await runRepoStatsForBatches({
-    outputFolder: batchFilesFolder,
-    logger,
-    opts,
-    appToken,
-    processedFilesFolder,
-    failedFilesFolder,
-  });
+  logger.debug('Getting batch file names...');
+  let fileNames = await getBatchFileNames(batchFilesFolder);
+  const maxAttempts = opts.maxRetryAttempts || 3;
+
+  const results: ProcessingResult[] = [];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (fileNames.length === 0) {
+      logger.info('No files to process.');
+      break;
+    }
+
+    logger.info(
+      `Processing batch files (Attempt ${attempt}/${maxAttempts})...`,
+    );
+    const result = await runRepoStatsForBatches({
+      outputFolder: batchFilesFolder,
+      logger,
+      opts,
+      appToken,
+      processedFilesFolder,
+      failedFilesFolder,
+      fileNames,
+    });
+
+    results.push(result);
+
+    if (result.filesToRetry.length === 0) {
+      logger.info('All files processed successfully.');
+      break;
+    }
+
+    if (attempt === maxAttempts) {
+      logger.error(
+        `Reached maximum number of retry attempts (${maxAttempts}). ${result.filesToRetry.length} files still need processing.`,
+      );
+      break;
+    }
+
+    logger.info(
+      `Attempt ${attempt}: ${result.filesToRetry.length} files need to be retried.`,
+    );
+    fileNames = result.filesToRetry;
+  }
+
+  // Aggregate results
+  const finalResults = results.reduce(
+    (acc, curr) => ({
+      successCount: acc.successCount + curr.successCount,
+      failureCount: acc.failureCount + curr.failureCount,
+      filesToRetry: curr.filesToRetry,
+    }),
+    { successCount: 0, failureCount: 0, filesToRetry: [] as string[] },
+  );
+
+  logger.info('Final processing results:');
+  logger.info(`- Successfully processed: ${finalResults.successCount} files`);
+  logger.info(`- Failed to process: ${finalResults.failureCount} files`);
+  logger.info(
+    `- Files requiring retry: ${finalResults.filesToRetry.length} files`,
+  );
+  logger.info(`- Total attempts made: ${results.length}`);
 
   logger.info('Stopping the application...');
+}
+
+interface ProcessingResult {
+  successCount: number;
+  failureCount: number;
+  filesToRetry: string[];
 }
 
 async function runRepoStatsForBatches({
@@ -129,6 +189,7 @@ async function runRepoStatsForBatches({
   appToken,
   processedFilesFolder,
   failedFilesFolder,
+  fileNames,
 }: {
   outputFolder: string;
   logger: Logger;
@@ -136,16 +197,19 @@ async function runRepoStatsForBatches({
   appToken: string;
   processedFilesFolder: string;
   failedFilesFolder: string;
-}): Promise<void> {
+  fileNames: string[];
+}): Promise<ProcessingResult> {
   if (!checkGhRepoStatsInstalled()) {
     logger.error('gh repo-stats is not installed. Please install it first.');
-    return;
-  } else {
-    logger.info('gh repo-stats is installed.');
+    return { successCount: 0, failureCount: 0, filesToRetry: [] };
   }
 
-  const fileNames = await getBatchFileNames(outputFolder);
+  logger.info('gh repo-stats is installed.');
   logger.info(`Found ${fileNames.length} batch files.`);
+
+  let successCount = 0;
+  let failureCount = 0;
+  const filesToRetry: string[] = [];
 
   for (const fileName of fileNames) {
     const filePath = `${outputFolder}/${fileName}`;
@@ -158,12 +222,13 @@ async function runRepoStatsForBatches({
     if (success) {
       logger.info(`Successfully processed file: ${fileName}`);
       moveFile(filePath, processedFilesFolder);
+      successCount++;
     } else {
       logger.error(`Failed to process file: ${fileName}`);
       logger.error(`Error: ${error?.message}`);
 
       logger.debug('Identifying failed repos...');
-      await handleFailedProcessing({
+      const retryFile = await handleFailedProcessing({
         filePath,
         fileName,
         orgName: opts.orgName,
@@ -172,11 +237,18 @@ async function runRepoStatsForBatches({
         failedFilesFolder,
         logger,
       });
+
+      if (retryFile) {
+        filesToRetry.push(retryFile);
+      }
+      failureCount++;
     }
   }
 
   const processed = await getProcessedRepos(opts.orgName);
   logger.info(`Processed repos: ${processed.length}`);
+
+  return { successCount, failureCount, filesToRetry };
 }
 
 async function identifyFailedRepos({
@@ -224,7 +296,7 @@ async function handleFailedProcessing({
   outputFolder: string;
   failedFilesFolder: string;
   logger: Logger;
-}): Promise<void> {
+}): Promise<string | undefined> {
   const { processedRepos, unprocessedRepos } = await identifyFailedRepos({
     filePath,
     orgName,
@@ -239,11 +311,18 @@ async function handleFailedProcessing({
     logger.info(`Created processed repos file for ${fileName}`);
   }
 
+  let retryFileName: string | undefined;
   if (unprocessedRepos.length > 0) {
-    await writeReposToRetryFile(unprocessedRepos, fileName, outputFolder);
+    retryFileName = await writeReposToRetryFile(
+      unprocessedRepos,
+      fileName,
+      outputFolder,
+    );
     logger.info(`Created retry file for ${fileName}`);
   }
 
   await moveFile(filePath, failedFilesFolder);
   logger.info(`Moved original file to failed files folder: ${fileName}`);
+
+  return retryFileName;
 }

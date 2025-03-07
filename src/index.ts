@@ -18,6 +18,7 @@ run({
   appInstallationId: process.env.APP_INSTALLATION_ID,
   batchSize: parseInt(process.env.BATCH_SIZE || '100', 10),
   createBatchFiles: process.env.CREATE_BATCH_FILES != 'false',
+  maxRetryAttempts: parseInt(process.env.MAX_RETRY_ATTEMPTS || '3', 10),
 }).catch((error) => {
   console.error('An error occurred:', error);
   process.exit(1);
