@@ -3,7 +3,8 @@ import { writeFile, readdir, rename, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { stringify } from 'csv-stringify';
 import { parse } from '@fast-csv/parse';
-import { Logger, RepositoryType } from './types';
+import { Logger } from './types';
+import { RepositoryType } from './octokit';
 
 export async function createBatchFiles({
   org,
@@ -13,7 +14,7 @@ export async function createBatchFiles({
   logger,
 }: {
   org: string;
-  iterator: AsyncGenerator<RepositoryType, any, any>;
+  iterator: AsyncGenerator<RepositoryType, void, unknown>;
   batchSize: number;
   outputFolder: string;
   logger: Logger;

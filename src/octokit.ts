@@ -7,8 +7,9 @@ import {
 import { Octokit, RequestError } from 'octokit';
 import { paginateGraphQL } from '@octokit/plugin-paginate-graphql';
 import { throttling } from '@octokit/plugin-throttling';
-import { Logger, LoggerFn, RepositoryType } from './types';
+import { Logger, LoggerFn } from './types';
 import { AuthConfig } from './auth';
+import { components } from '@octokit/openapi-types/types';
 
 const OctokitWithPlugins = Octokit.plugin(paginateGraphQL).plugin(throttling);
 
@@ -100,6 +101,8 @@ const octokit_headers = {
   'X-GitHub-Api-Version': '2022-11-28',
 };
 
+export type RepositoryType = components['schemas']['repository'];
+
 // get the repos for the org
 export async function* listReposForOrg({
   org,
@@ -109,7 +112,7 @@ export async function* listReposForOrg({
   org: string;
   per_page: number;
   octokit: Octokit;
-}): AsyncGenerator<RepositoryType> {
+}): AsyncGenerator<RepositoryType, void, unknown> {
   const iterator = await octokit.paginate.iterator(
     octokit.rest.repos.listForOrg,
     {
