@@ -9,14 +9,14 @@ import {
   getBatchFileNames,
   moveFile,
   readReposFromFile,
-  appendReposToRetryFile,
+  writeReposToProcessedFile,
+  writeReposToRetryFile,
 } from './file-utils';
 import {
   checkGhRepoStatsInstalled,
   getProcessedRepos,
   runRepoStats,
 } from './repo-stats';
-import { get } from 'http';
 
 interface Arguments {
   accessToken?: string;
@@ -42,6 +42,7 @@ const _init = async (
   appToken: string;
   batchFilesFolder: string;
   processedFilesFolder: string;
+  failedFilesFolder: string;
 }> => {
   const logger = createLogger(opts.verbose);
   logger.info('Starting the application...');
@@ -63,17 +64,32 @@ const _init = async (
   logger.debug('Ensuring output directories exist...');
   const batchFilesFolder = `${opts.outputPath || './'}/batch_files`;
   const processedFilesFolder = `${opts.outputPath || './'}/processed_files`;
+  const failedFilesFolder = `${opts.outputPath || './'}/failed_files`;
+
   ensureOutputDirectoriesExist(
-    [batchFilesFolder, processedFilesFolder],
+    [batchFilesFolder, processedFilesFolder, failedFilesFolder],
     logger,
   );
 
-  return { logger, octokit, appToken, batchFilesFolder, processedFilesFolder };
+  return {
+    logger,
+    octokit,
+    appToken,
+    batchFilesFolder,
+    processedFilesFolder,
+    failedFilesFolder,
+  };
 };
 
 export async function run(opts: Arguments): Promise<void> {
-  const { logger, octokit, appToken, batchFilesFolder, processedFilesFolder } =
-    await _init(opts);
+  const {
+    logger,
+    octokit,
+    appToken,
+    batchFilesFolder,
+    processedFilesFolder,
+    failedFilesFolder,
+  } = await _init(opts);
 
   logger.debug('Getting all repos for org...');
   const reposIterator = listReposForOrg({
@@ -100,35 +116,10 @@ export async function run(opts: Arguments): Promise<void> {
     opts,
     appToken,
     processedFilesFolder,
+    failedFilesFolder,
   });
 
   logger.info('Stopping the application...');
-}
-
-async function identifyFailedRepos({
-  filePath,
-  orgName,
-  outputPath,
-  logger,
-}: {
-  filePath: string;
-  orgName: string;
-  outputPath?: string;
-  logger: Logger;
-}): Promise<void> {
-  logger.info('Identifying repos that failed...');
-  const to_process = await readReposFromFile(filePath);
-  const processed_so_far = await getProcessedRepos(orgName);
-
-  const unprocessedRepos = to_process.filter(
-    (repo) => !processed_so_far.includes(repo),
-  );
-
-  if (unprocessedRepos.length > 0) {
-    const retryFilePath = `${outputPath || './'}/items_to_retry.csv`;
-    await appendReposToRetryFile(unprocessedRepos, retryFilePath);
-    logger.info(`Appended ${unprocessedRepos.length} repos to retry file.`);
-  }
 }
 
 async function runRepoStatsForBatches({
@@ -137,12 +128,14 @@ async function runRepoStatsForBatches({
   opts,
   appToken,
   processedFilesFolder,
+  failedFilesFolder,
 }: {
   outputFolder: string;
   logger: Logger;
   opts: Arguments;
   appToken: string;
   processedFilesFolder: string;
+  failedFilesFolder: string;
 }): Promise<void> {
   if (!checkGhRepoStatsInstalled()) {
     logger.error('gh repo-stats is not installed. Please install it first.');
@@ -158,13 +151,9 @@ async function runRepoStatsForBatches({
     const filePath = `${outputFolder}/${fileName}`;
 
     logger.info(`Processing file: ${fileName}`);
-    const { success, error, output } = await runRepoStats(
-      filePath,
-      opts.orgName,
-      appToken,
-      5,
-      10,
-    );
+    const { success, error } = fileName.endsWith('batch_3.csv')
+      ? { success: false, error: new Error('test case') }
+      : await runRepoStats(filePath, opts.orgName, appToken, 5, 10);
 
     if (success) {
       logger.info(`Successfully processed file: ${fileName}`);
@@ -173,10 +162,14 @@ async function runRepoStatsForBatches({
       logger.error(`Failed to process file: ${fileName}`);
       logger.error(`Error: ${error?.message}`);
 
-      await identifyFailedRepos({
+      logger.debug('Identifying failed repos...');
+      await handleFailedProcessing({
         filePath,
+        fileName,
         orgName: opts.orgName,
-        outputPath: opts.outputPath,
+        processedFilesFolder,
+        outputFolder,
+        failedFilesFolder,
         logger,
       });
     }
@@ -184,4 +177,73 @@ async function runRepoStatsForBatches({
 
   const processed = await getProcessedRepos(opts.orgName);
   logger.info(`Processed repos: ${processed.length}`);
+}
+
+async function identifyFailedRepos({
+  filePath,
+  orgName,
+}: {
+  filePath: string;
+  orgName: string;
+}): Promise<{
+  unprocessedRepos: string[];
+  processedRepos: string[];
+  totalRepos: number;
+  countMatches: boolean;
+}> {
+  const to_process = await readReposFromFile(filePath);
+  const processed_so_far = await getProcessedRepos(orgName);
+
+  const unprocessedRepos = to_process.filter(
+    (repo) => !processed_so_far.includes(repo),
+  );
+
+  const processedRepos = to_process.filter((repo) =>
+    processed_so_far.includes(repo),
+  );
+
+  const totalRepos = unprocessedRepos.length + processedRepos.length;
+  const countMatches = totalRepos === to_process.length;
+
+  return { unprocessedRepos, processedRepos, totalRepos, countMatches };
+}
+
+async function handleFailedProcessing({
+  filePath,
+  fileName,
+  orgName,
+  processedFilesFolder,
+  outputFolder,
+  failedFilesFolder,
+  logger,
+}: {
+  filePath: string;
+  fileName: string;
+  orgName: string;
+  processedFilesFolder: string;
+  outputFolder: string;
+  failedFilesFolder: string;
+  logger: Logger;
+}): Promise<void> {
+  const { processedRepos, unprocessedRepos } = await identifyFailedRepos({
+    filePath,
+    orgName,
+  });
+
+  if (processedRepos.length > 0) {
+    await writeReposToProcessedFile(
+      processedRepos,
+      fileName,
+      processedFilesFolder,
+    );
+    logger.info(`Created processed repos file for ${fileName}`);
+  }
+
+  if (unprocessedRepos.length > 0) {
+    await writeReposToRetryFile(unprocessedRepos, fileName, outputFolder);
+    logger.info(`Created retry file for ${fileName}`);
+  }
+
+  await moveFile(filePath, failedFilesFolder);
+  logger.info(`Moved original file to failed files folder: ${fileName}`);
 }

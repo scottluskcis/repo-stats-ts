@@ -180,3 +180,63 @@ export async function appendReposToRetryFile(
     );
   });
 }
+
+export async function writeReposToProcessedFile(
+  repos: string[],
+  fileName: string,
+  processedFilesFolder: string,
+): Promise<void> {
+  if (repos.length === 0) return;
+
+  const fileNameWithoutExt = fileName.replace('.csv', '');
+  const processedFilePath = `${processedFilesFolder}/${fileNameWithoutExt}_processed.csv`;
+
+  return new Promise((resolve, reject) => {
+    stringify(
+      repos.map((repo) => [repo]),
+      { header: false },
+      async (err, output) => {
+        if (err) {
+          reject(err);
+        } else {
+          try {
+            await writeFile(processedFilePath, output);
+            resolve();
+          } catch (writeError) {
+            reject(writeError);
+          }
+        }
+      },
+    );
+  });
+}
+
+export async function writeReposToRetryFile(
+  repos: string[],
+  fileName: string,
+  outputFolder: string,
+): Promise<void> {
+  if (repos.length === 0) return;
+
+  const fileNameWithoutExt = fileName.replace('.csv', '');
+  const retryFilePath = `${outputFolder}/${fileNameWithoutExt}_retry.csv`;
+
+  return new Promise((resolve, reject) => {
+    stringify(
+      repos.map((repo) => [repo]),
+      { header: false },
+      async (err, output) => {
+        if (err) {
+          reject(err);
+        } else {
+          try {
+            await writeFile(retryFilePath, output);
+            resolve();
+          } catch (writeError) {
+            reject(writeError);
+          }
+        }
+      },
+    );
+  });
+}
