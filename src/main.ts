@@ -262,6 +262,7 @@ async function runRepoStatsForBatches({
       5,
       10,
     );
+
     if (success) {
       logger.debug(`✓ Batch file processed: ${fileName}`);
       moveFile(filePath, processedFilesFolder);
