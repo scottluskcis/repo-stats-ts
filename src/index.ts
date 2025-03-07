@@ -20,6 +20,8 @@ run({
   createBatchFiles: process.env.CREATE_BATCH_FILES != 'false',
   maxRetryAttempts: parseInt(process.env.MAX_RETRY_ATTEMPTS || '3', 10),
   retryDelaySeconds: parseInt(process.env.RETRY_DELAY_SECONDS || '5', 10),
+  pageSize: parseInt(process.env.PAGE_SIZE || '5', 10),
+  extraPageSize: parseInt(process.env.EXTRA_PAGE_SIZE || '10', 10),
 }).catch((error) => {
   console.error('An error occurred:', error);
   process.exit(1);

@@ -270,8 +270,8 @@ async function runRepoStatsForBatches({
       filePath,
       opts.orgName,
       appToken,
-      5,
-      10,
+      opts.pageSize || 5,
+      opts.extraPageSize || 10,
     );
 
     if (success) {

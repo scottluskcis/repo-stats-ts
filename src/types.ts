@@ -23,6 +23,8 @@ export interface Arguments {
   createBatchFiles?: boolean;
   maxRetryAttempts?: number;
   retryDelaySeconds?: number;
+  pageSize?: number;
+  extraPageSize?: number;
 }
 
 export interface ProcessingSummary {
