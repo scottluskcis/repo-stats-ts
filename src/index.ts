@@ -1,5 +1,6 @@
 import { config } from 'dotenv';
-import { run } from './main';
+//import { run } from './main';
+import { run } from './repo-stats';
 
 // Load environment variables from .env file
 config();

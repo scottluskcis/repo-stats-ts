@@ -7,7 +7,13 @@ import {
 import { Octokit, RequestError } from 'octokit';
 import { paginateGraphQL } from '@octokit/plugin-paginate-graphql';
 import { throttling } from '@octokit/plugin-throttling';
-import { Logger, LoggerFn, RepositoryStats } from './types';
+import {
+  IssuesResponse,
+  IssueStats,
+  Logger,
+  LoggerFn,
+  RepositoryStats,
+} from './types';
 import { AuthConfig } from './auth';
 import { components } from '@octokit/openapi-types/types';
 
@@ -154,11 +160,10 @@ export async function* getOrgRepoStats({
 }): AsyncGenerator<RepositoryStats, void, unknown> {
   const IS_EMPTY_FLAG = 'isEmpty';
 
-  const iterator = await octokit.graphql.paginate.iterator(
-    `query($login: String!, $pageSize: Int!, $endCursor: String) {
+  const query = `
+    query orgRepoStats($login: String!, $pageSize: Int!, $cursor: String) {
       organization(login: $login) {
-        repositories(first: $pageSize, after: $endCursor, orderBy: {field: NAME, direction: ASC}) {
-          totalDiskUsage
+        repositories(first: $pageSize, after: $cursor, orderBy: {field: NAME, direction: ASC}) {
           pageInfo {
             endCursor
             hasNextPage
@@ -253,17 +258,69 @@ export async function* getOrgRepoStats({
           }
         }
       }
-    }`,
-    {
-      login: org,
-      pageSize: per_page,
-    },
-  );
+    }`;
+
+  const iterator = await octokit.graphql.paginate.iterator(query, {
+    login: org,
+    pageSize: per_page,
+    cursor: null, // Start with null cursor
+  });
 
   for await (const response of iterator) {
     const repos = response.organization.repositories.nodes;
     for (const repo of repos) {
       yield repo;
+    }
+  }
+}
+
+export async function* getRepoIssues({
+  owner,
+  repo,
+  per_page,
+  octokit,
+  cursor = null,
+}: {
+  owner: string;
+  repo: string;
+  per_page: number;
+  octokit: Octokit;
+  cursor?: string | null;
+}): AsyncGenerator<IssueStats, void, unknown> {
+  const query = `
+    query repoIssues($owner: String!, $repo: String!, $pageSize: Int!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        issues(first: $pageSize, after: $cursor) {
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
+          nodes {
+            timeline {
+              totalCount
+            }
+            comments {
+              totalCount
+            }
+          }
+        }
+      }
+    }`;
+
+  const iterator = await octokit.graphql.paginate.iterator<IssuesResponse>(
+    query,
+    {
+      owner,
+      repo,
+      pageSize: per_page,
+      cursor,
+    },
+  );
+
+  for await (const response of iterator) {
+    const issues = response.repository.issues.nodes;
+    for (const issue of issues) {
+      yield issue;
     }
   }
 }

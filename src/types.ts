@@ -119,3 +119,56 @@ export interface RepositoryStats {
   updatedAt: string;
   url: string;
 }
+
+export interface IssueStats {
+  totalCount: number;
+  timeline: {
+    totalCount: number;
+  };
+  comments: {
+    totalCount: number;
+  };
+}
+
+export interface IssuesResponse {
+  repository: {
+    issues: {
+      pageInfo: {
+        endCursor: string;
+        hasNextPage: boolean;
+      };
+      nodes: IssueStats[];
+    };
+  };
+}
+
+export interface RepoStatsResult {
+  Org_Name: string;
+  Repo_Name: string;
+  Is_Empty?: boolean;
+  Last_Push: string;
+  Last_Update: string;
+  isFork: boolean;
+  isArchived: boolean;
+  Repo_Size_mb: number;
+  Record_Count: number;
+  Collaborator_Count: number;
+  Protected_Branch_Count: number;
+  PR_Review_Count: number;
+  Milestone_Count: number;
+  Issue_Count: number;
+  PR_Count: number;
+  PR_Review_Comment_Count: number;
+  Commit_Comment_Count: number;
+  Issue_Comment_Count: number;
+  Issue_Event_Count: number;
+  Release_Count: number;
+  Project_Count: number;
+  Branch_Count: number;
+  Tag_Count: number;
+  Discussion_Count: number;
+  Has_Wiki: boolean;
+  Full_URL: string;
+  Migration_Issue?: string | null;
+  Created?: string | null;
+}

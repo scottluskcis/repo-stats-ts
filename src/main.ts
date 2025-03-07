@@ -9,6 +9,7 @@ import { createAuthConfig } from './auth';
 import {
   createOctokit,
   generateAppToken,
+  getOrgRepoStats,
   listReposForOrg,
   RepositoryType,
 } from './octokit';
@@ -32,7 +33,7 @@ import {
   checkGhRepoStatsInstalled,
   getProcessedRepos,
   runRepoStats,
-} from './repo-stats';
+} from './repo-stats-shell';
 
 const _init = async (
   opts: Arguments,
@@ -182,6 +183,21 @@ async function createInitialBatchFiles(params: {
       outputFolder: params.batchFilesFolder,
       logger: params.logger,
     });
+  }
+}
+
+export async function runNew(opts: Arguments): Promise<void> {
+  const { logger, octokit, appToken } = await _init(opts);
+
+  logger.debug('Fetching repositories for organization...');
+  const reposIterator = getOrgRepoStats({
+    org: opts.orgName,
+    per_page: 10, // opts.pageSize || 100,
+    octokit,
+  });
+
+  for await (const repo of reposIterator) {
+    logger.info(`Processing repository: ${repo.name}`);
   }
 }
 
