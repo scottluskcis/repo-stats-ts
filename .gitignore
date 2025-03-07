@@ -17,6 +17,7 @@ logs/
 
 # Ignore environment variable files
 .env
+.env.local
 
 *.local.sh
 *.pem
