@@ -255,10 +255,13 @@ async function runRepoStatsForBatches({
     const filePath = `${outputFolder}/${fileName}`;
     logger.debug(`Processing batch file: ${fileName}`);
 
-    const { success, error } = fileName.endsWith('batch_3.csv')
-      ? { success: false, error: new Error('test case') }
-      : await runRepoStats(filePath, opts.orgName, appToken, 5, 10);
-
+    const { success, error } = await runRepoStats(
+      filePath,
+      opts.orgName,
+      appToken,
+      5,
+      10,
+    );
     if (success) {
       logger.debug(`✓ Batch file processed: ${fileName}`);
       moveFile(filePath, processedFilesFolder);
