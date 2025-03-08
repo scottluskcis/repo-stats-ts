@@ -13,6 +13,9 @@ import {
   Logger,
   LoggerFn,
   PullRequestNode,
+  RateLimitCheck,
+  RateLimitResponse,
+  RateLimitResult,
   RepositoryStats,
 } from './types';
 import { AuthConfig } from './auth';
@@ -384,4 +387,93 @@ export async function* getRepoPullRequests({
       yield pr;
     }
   }
+}
+
+async function getRateLimitData(
+  octokit: Octokit,
+): Promise<RateLimitCheck | null> {
+  const response = await octokit.request('GET /rate_limit');
+  const rateLimitData = response.data as RateLimitResponse;
+
+  if (rateLimitData.message === 'Rate limiting is not enabled.') {
+    return {
+      graphQLRemaining: 9999999999,
+      coreRemaining: 9999999999,
+      message: 'API rate limiting is not enabled.',
+    };
+  }
+
+  return {
+    graphQLRemaining: rateLimitData.resources?.graphql.remaining || 0,
+    coreRemaining: rateLimitData.resources?.core.remaining || 0,
+    message: '',
+  };
+}
+
+export async function checkRateLimits({
+  octokit,
+  sleepSeconds = 60,
+  maxRetries = 5,
+}: {
+  octokit: Octokit;
+  sleepSeconds?: number;
+  maxRetries?: number;
+}): Promise<RateLimitResult> {
+  const result: RateLimitResult = {
+    apiRemainingRequest: 0,
+    apiRemainingMessage: '',
+    graphQLRemaining: 0,
+    graphQLMessage: '',
+    message: '',
+    messageType: 'info',
+  };
+
+  try {
+    let sleepCounter = 0;
+    const rateLimitCheck = await getRateLimitData(octokit);
+
+    if (!rateLimitCheck) {
+      throw new Error('Failed to get rate limit data');
+    }
+
+    result.graphQLRemaining = rateLimitCheck.graphQLRemaining;
+    result.apiRemainingRequest = rateLimitCheck.coreRemaining;
+
+    if (rateLimitCheck.message) {
+      result.apiRemainingMessage = rateLimitCheck.message;
+      result.graphQLMessage = rateLimitCheck.message;
+      result.message = rateLimitCheck.message;
+      return result;
+    }
+
+    if (rateLimitCheck.graphQLRemaining === 0) {
+      sleepCounter++;
+      const warningMessage = `We have run out of GraphQL calls and need to sleep! Sleeping for ${sleepSeconds} seconds before next check`;
+
+      if (sleepCounter > maxRetries) {
+        result.message = `Exceeded maximum retry attempts of ${maxRetries}`;
+        result.messageType = 'error';
+        return result;
+      }
+
+      result.message = warningMessage;
+      result.messageType = 'warning';
+      result.graphQLMessage = warningMessage;
+
+      await new Promise((resolve) => setTimeout(resolve, sleepSeconds * 1000));
+    } else {
+      const message = `Rate limits remaining: ${rateLimitCheck.graphQLRemaining.toLocaleString()} GraphQL points ${rateLimitCheck.coreRemaining.toLocaleString()} REST calls`;
+      result.message = message;
+      result.messageType = 'info';
+      result.graphQLMessage = message;
+    }
+  } catch (error) {
+    result.message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to get valid response back from GitHub API!';
+    result.messageType = 'error';
+  }
+
+  return result;
 }

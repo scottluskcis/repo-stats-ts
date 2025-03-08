@@ -1,5 +1,6 @@
 import { Octokit } from 'octokit/dist-types/octokit';
 import {
+  checkRateLimits,
   createOctokit,
   getOrgRepoStats,
   getRepoIssues,
@@ -46,6 +47,8 @@ const _init = async (
 
 export async function run(opts: Arguments): Promise<void> {
   const { logger, octokit } = await _init(opts);
+  const rateLimitCheckInterval = opts.rateLimitCheckInterval || 10;
+  let processedCount = 0;
 
   logger.debug('Fetching repositories for organization...');
   const reposIterator = getOrgRepoStats({
@@ -54,20 +57,51 @@ export async function run(opts: Arguments): Promise<void> {
     octokit,
   });
 
-  let count = 0;
-  for await (const result of processRepoStats({
-    reposIterator,
-    octokit,
-    logger,
-    pageSize: opts.pageSize || 100,
-  })) {
-    logger.info(`Processed repository: ${result.Repo_Name}`);
-    await writeResultToCsv(result, logger);
-    count++;
+  try {
+    for await (const result of processRepoStats({
+      reposIterator,
+      octokit,
+      logger,
+      pageSize: opts.pageSize || 100,
+    })) {
+      // write result to CSV
+      logger.info(`Processed repository: ${result.Repo_Name}`);
+      await writeResultToCsv(result, logger);
 
-    if (count > 30) {
-      logger.info('Processed 30 repositories, stopping...');
-      break;
+      processedCount++;
+
+      // Check rate limits after configured interval
+      if (processedCount % rateLimitCheckInterval === 0) {
+        const rateLimitReached = await checkAndHandleRateLimits({
+          octokit,
+          logger,
+          processedCount,
+        });
+
+        if (rateLimitReached) {
+          logger.warn(
+            `Rate limit reached after processing ${processedCount} repositories. Pausing processing.`,
+          );
+          throw new Error(
+            'Rate limit reached. Processing will be paused until limits reset.',
+          );
+        }
+      }
+    }
+
+    logger.info(`Completed processing ${processedCount} repositories`);
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message.includes('rate limit exceeded')) {
+        logger.warn(
+          'Processing paused due to API rate limits. Please retry after the rate limit reset.',
+        );
+      } else {
+        logger.error(`Error processing repositories: ${error.message}`);
+        throw error;
+      }
+    } else {
+      throw error;
     }
   }
 }
@@ -114,6 +148,47 @@ async function* processRepoStats({
     );
     yield result;
   }
+}
+
+async function checkAndHandleRateLimits({
+  octokit,
+  logger,
+  processedCount,
+}: {
+  octokit: Octokit;
+  logger: Logger;
+  processedCount: number;
+}): Promise<boolean> {
+  logger.debug(
+    `Checking rate limits after processing ${processedCount} repositories`,
+  );
+  const rateLimits = await checkRateLimits({ octokit });
+
+  if (
+    rateLimits.graphQLRemaining === 0 ||
+    rateLimits.apiRemainingRequest === 0
+  ) {
+    const limitType =
+      rateLimits.graphQLRemaining === 0 ? 'GraphQL' : 'REST API';
+    logger.warn(
+      `${limitType} rate limit reached after processing ${processedCount} repositories`,
+    );
+
+    if (rateLimits.messageType === 'error') {
+      logger.error(rateLimits.message);
+      throw new Error(
+        `${limitType} rate limit exceeded and maximum retries reached`,
+      );
+    }
+
+    logger.warn(rateLimits.message);
+    logger.info(`GraphQL remaining: ${rateLimits.graphQLRemaining}`);
+    logger.info(`REST API remaining: ${rateLimits.apiRemainingRequest}`);
+
+    return true; // indicates rate limit was reached
+  }
+
+  return false; // indicates rate limit was not reached
 }
 
 async function writeResultToCsv(

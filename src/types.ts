@@ -25,6 +25,7 @@ export interface Arguments {
   retryDelaySeconds?: number;
   pageSize?: number;
   extraPageSize?: number;
+  rateLimitCheckInterval?: number;
 }
 
 export interface ProcessingSummary {
@@ -198,4 +199,31 @@ export interface RepoStatsResult {
   Full_URL: string;
   Migration_Issue?: boolean | null;
   Created?: string | null;
+}
+
+export interface RateLimitCheck {
+  graphQLRemaining: number;
+  coreRemaining: number;
+  message: string;
+}
+
+export interface RateLimitResponse {
+  message?: string;
+  resources?: {
+    graphql: {
+      remaining: number;
+    };
+    core: {
+      remaining: number;
+    };
+  };
+}
+
+export interface RateLimitResult {
+  apiRemainingRequest: number;
+  apiRemainingMessage: string;
+  graphQLRemaining: number;
+  graphQLMessage: string;
+  message: string;
+  messageType: 'error' | 'info' | 'warning';
 }
