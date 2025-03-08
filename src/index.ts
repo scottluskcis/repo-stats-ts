@@ -1,4 +1,4 @@
-import { run } from './repo-stats';
+import { run } from './main';
 
 import { config } from 'dotenv';
 config();
