@@ -142,6 +142,18 @@ export interface IssuesResponse {
   };
 }
 
+export interface PullRequestResponse {
+  repository: {
+    pullRequests: {
+      pageInfo: {
+        endCursor: string;
+        hasNextPage: boolean;
+      };
+      nodes: PullRequestNode[];
+    };
+  };
+}
+
 export interface RepoStatsResult {
   Org_Name: string;
   Repo_Name: string;
@@ -150,6 +162,7 @@ export interface RepoStatsResult {
   Last_Update: string;
   isFork: boolean;
   isArchived: boolean;
+  Disk_Size_kb: number;
   Repo_Size_mb: number;
   Record_Count: number;
   Collaborator_Count: number;

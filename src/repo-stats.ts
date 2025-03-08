@@ -1,9 +1,15 @@
 import { Octokit } from 'octokit/dist-types/octokit';
-import { createOctokit, getOrgRepoStats, getRepoIssues } from './octokit';
+import {
+  createOctokit,
+  getOrgRepoStats,
+  getRepoIssues,
+  getRepoPullRequests,
+} from './octokit';
 import {
   Arguments,
   IssuesConnection,
   Logger,
+  PullRequestsConnection,
   RepositoryStats,
   RepoStatsResult,
 } from './types';
@@ -60,14 +66,25 @@ export async function run(opts: Arguments): Promise<void> {
       per_page: opts.pageSize || 100,
       issues: repo.issues,
       octokit: octokit,
+      logger: logger,
     });
 
     // analyze pull request details
+    const prStats = await analyzePullRequests({
+      owner: repo.owner.login,
+      repo: repo.name,
+      per_page: opts.pageSize || 100,
+      pullRequests: repo.pullRequests,
+      octokit: octokit,
+      logger: logger,
+    });
 
-    // map to object that wil be sent to output
-    repo_stats.push(mapToRepoStatsResult(repo, issueStats, opts.orgName));
+    // map to object that will be sent to output
+    repo_stats.push(
+      mapToRepoStatsResult(repo, issueStats, prStats, opts.orgName),
+    );
 
-    if (count > 100) {
+    if (count > 30) {
       logger.info('Processed 100 repositories, stopping...');
       break;
     }
@@ -81,6 +98,10 @@ function mapToRepoStatsResult(
     issueEventCount: number;
     issueCommentCount: number;
   },
+  prStats: {
+    prReviewCommentCount: number;
+    commitCommentCount: number;
+  },
   orgName: string,
 ): RepoStatsResult {
   return {
@@ -91,15 +112,16 @@ function mapToRepoStatsResult(
     Last_Update: repo.updatedAt,
     isFork: repo.isFork,
     isArchived: repo.isArchived,
+    Disk_Size_kb: repo.diskUsage,
     Repo_Size_mb: convertKbToMb(repo.diskUsage),
     Record_Count: calculateRecordCount(repo),
     Collaborator_Count: repo.collaborators.totalCount,
     Protected_Branch_Count: repo.branchProtectionRules.totalCount,
-    PR_Review_Count: 0, // analyze PRs
+    PR_Review_Count: repo.pullRequests.totalCount,
+    PR_Review_Comment_Count: prStats.prReviewCommentCount,
     Commit_Comment_Count: repo.commitComments.totalCount,
     Milestone_Count: repo.milestones.totalCount,
     PR_Count: repo.pullRequests.totalCount,
-    PR_Review_Comment_Count: 0, // analyze PR reviews
     Project_Count: repo.projects.totalCount,
     Branch_Count: repo.branches.totalCount,
     Release_Count: repo.releases.totalCount,
@@ -134,19 +156,28 @@ async function analyzeIssues({
   per_page,
   issues,
   octokit,
+  logger, // Add logger parameter
 }: {
   owner: string;
   repo: string;
   per_page: number;
   issues: IssuesConnection;
   octokit: Octokit;
+  logger: Logger;
 }): Promise<{
   totalIssuesCount: number;
   issueEventCount: number;
   issueCommentCount: number;
 }> {
+  logger.debug(`Analyzing issues for repository: ${repo}`);
+
   if (issues.totalCount <= 0) {
-    return { totalIssuesCount: 0, issueEventCount: 0, issueCommentCount: 0 };
+    logger.debug(`No issues found for repository: ${repo}`);
+    return {
+      totalIssuesCount: 0,
+      issueEventCount: 0,
+      issueCommentCount: 0,
+    };
   }
 
   const totalIssuesCount = issues.totalCount;
@@ -169,18 +200,152 @@ async function analyzeIssues({
     issues.pageInfo.hasNextPage &&
     issues.pageInfo.endCursor != null
   ) {
+    logger.debug(`More pages of issues found for repository: ${repo}`);
     const cursor = issues.pageInfo.endCursor;
-    for await (const issue of getRepoIssues({
+
+    try {
+      for await (const issue of getRepoIssues({
+        owner,
+        repo,
+        per_page,
+        octokit,
+        cursor,
+      })) {
+        issueEventCount +=
+          issue.timeline.totalCount - issue.comments.totalCount;
+        issueCommentCount += issue.comments.totalCount;
+      }
+    } catch (error) {
+      logger.error(
+        `Error retrieving additional issues for ${owner}/${repo}. ` +
+          `Consider reducing page size. Error: ${error}`,
+        error,
+      );
+      throw error;
+    }
+  } else {
+    logger.debug(`Gathered all issues from repository: ${repo}`);
+  }
+
+  return {
+    totalIssuesCount,
+    issueEventCount,
+    issueCommentCount,
+  };
+}
+
+async function analyzePullRequests({
+  owner,
+  repo,
+  per_page,
+  pullRequests,
+  octokit,
+  logger,
+}: {
+  owner: string;
+  repo: string;
+  per_page: number;
+  pullRequests: PullRequestsConnection;
+  octokit: Octokit;
+  logger: Logger;
+}): Promise<{
+  prReviewCommentCount: number;
+  commitCommentCount: number;
+  issueEventCount: number;
+  issueCommentCount: number;
+  prReviewCount: number;
+}> {
+  if (pullRequests.totalCount <= 0) {
+    return {
+      prReviewCommentCount: 0,
+      commitCommentCount: 0,
+      issueEventCount: 0,
+      issueCommentCount: 0,
+      prReviewCount: 0,
+    };
+  }
+
+  let issueEventCount = 0;
+  let issueCommentCount = 0;
+  let prReviewCount = 0;
+  let prReviewCommentCount = 0;
+  let commitCommentCount = 0;
+
+  // Process first page
+  for (const pr of pullRequests.nodes) {
+    const eventCount = pr.timeline.totalCount;
+    const commentCount = pr.comments.totalCount;
+    const reviewCount = pr.reviews.totalCount;
+    const commitCount = pr.commits.totalCount;
+
+    // Check for potential issues with event counts
+    const redundantEventCount =
+      commentCount + (commitCount > 250 ? 250 : commitCount);
+    if (redundantEventCount > eventCount) {
+      logger.warn(
+        `Warning: More redundant events than timeline events for PR ${pr.number}!
+         EVENT_CT: ${eventCount}
+         COMMENT_CT: ${commentCount}
+         COMMIT_CT: ${commitCount}`,
+      );
+    }
+
+    issueEventCount += eventCount - redundantEventCount;
+    issueCommentCount += commentCount;
+    prReviewCount += reviewCount;
+    prReviewCommentCount += pr.reviews.nodes.reduce(
+      (sum, review) => sum + review.comments.totalCount,
+      0,
+    );
+    commitCommentCount += commitCount;
+  }
+
+  // Process additional pages if they exist
+  if (
+    pullRequests.totalCount > 0 &&
+    pullRequests.pageInfo.hasNextPage &&
+    pullRequests.pageInfo.endCursor != null
+  ) {
+    const cursor = pullRequests.pageInfo.endCursor;
+    for await (const pr of getRepoPullRequests({
       owner,
       repo,
       per_page,
       octokit,
       cursor,
     })) {
-      issueEventCount += issue.timeline.totalCount - issue.comments.totalCount;
-      issueCommentCount += issue.comments.totalCount;
+      const eventCount = pr.timeline.totalCount;
+      const commentCount = pr.comments.totalCount;
+      const reviewCount = pr.reviews.totalCount;
+      const commitCount = pr.commits.totalCount;
+
+      const redundantEventCount =
+        commentCount + (commitCount > 250 ? 250 : commitCount);
+      if (redundantEventCount > eventCount) {
+        logger.warn(
+          `Warning: More redundant events than timeline events for PR ${pr.number}!
+           EVENT_CT: ${eventCount}
+           COMMENT_CT: ${commentCount}
+           COMMIT_CT: ${commitCount}`,
+        );
+      }
+
+      issueEventCount += eventCount - redundantEventCount;
+      issueCommentCount += commentCount;
+      prReviewCount += reviewCount;
+      prReviewCommentCount += pr.reviews.nodes.reduce(
+        (sum, review) => sum + review.comments.totalCount,
+        0,
+      );
+      commitCommentCount += commitCount;
     }
   }
 
-  return { totalIssuesCount, issueEventCount, issueCommentCount };
+  return {
+    prReviewCommentCount,
+    commitCommentCount,
+    issueEventCount,
+    issueCommentCount,
+    prReviewCount,
+  };
 }

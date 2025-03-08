@@ -12,6 +12,7 @@ import {
   IssueStats,
   Logger,
   LoggerFn,
+  PullRequestNode,
   RepositoryStats,
 } from './types';
 import { AuthConfig } from './auth';
@@ -321,6 +322,66 @@ export async function* getRepoIssues({
     const issues = response.repository.issues.nodes;
     for (const issue of issues) {
       yield issue;
+    }
+  }
+}
+
+export async function* getRepoPullRequests({
+  owner,
+  repo,
+  per_page,
+  octokit,
+  cursor = null,
+}: {
+  owner: string;
+  repo: string;
+  per_page: number;
+  octokit: Octokit;
+  cursor?: string | null;
+}): AsyncGenerator<PullRequestNode, void, unknown> {
+  const query = `
+    query repoPullRequests($owner: String!, $repo: String!, $pageSize: Int!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequests(first: $pageSize, after: $cursor) {
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
+          nodes {
+            number
+            timeline {
+              totalCount
+            }
+            comments {
+              totalCount
+            }
+            commits {
+              totalCount
+            }
+            reviews(first: $pageSize) {
+              totalCount
+              nodes {
+                comments {
+                  totalCount
+                }
+              }
+            }
+          }
+        }
+      }
+    }`;
+
+  const iterator = await octokit.graphql.paginate.iterator(query, {
+    owner,
+    repo,
+    pageSize: per_page,
+    cursor,
+  });
+
+  for await (const response of iterator) {
+    const prs = response.repository.pullRequests.nodes;
+    for (const pr of prs) {
+      yield pr;
     }
   }
 }
