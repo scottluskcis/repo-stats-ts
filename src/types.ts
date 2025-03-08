@@ -26,6 +26,10 @@ export interface Arguments {
   pageSize?: number;
   extraPageSize?: number;
   rateLimitCheckInterval?: number;
+  retryMaxAttempts?: number;
+  retryInitialDelayMs?: number;
+  retryMaxDelayMs?: number;
+  retryBackoffFactor?: number;
 }
 
 export interface ProcessingSummary {
@@ -97,6 +101,7 @@ export interface RepositoryOwner {
 }
 
 export interface RepositoryStats {
+  pageInfo: PageInfo;
   branches: TotalCount;
   branchProtectionRules: TotalCount;
   commitComments: TotalCount;
@@ -226,4 +231,22 @@ export interface RateLimitResult {
   graphQLMessage: string;
   message: string;
   messageType: 'error' | 'info' | 'warning';
+}
+
+export interface RetryState {
+  attempt: number;
+  lastCursor?: string | null;
+  error?: Error;
+}
+
+export interface ProcessedPageState {
+  cursor: string | null;
+  processedRepos: Set<string>;
+}
+
+export interface RepoProcessingResult {
+  cursor: string | null;
+  processedRepos: Set<string>;
+  processedCount: number;
+  isComplete: boolean;
 }

@@ -27,6 +27,13 @@ run({
     process.env.RATE_LIMIT_CHECK_INTERVAL || '60',
     10,
   ),
+  retryMaxAttempts: parseInt(process.env.RETRY_MAX_ATTEMPTS || '3', 10),
+  retryInitialDelayMs: parseInt(
+    process.env.RETRY_INITIAL_DELAY_MS || '1000',
+    10,
+  ),
+  retryMaxDelayMs: parseInt(process.env.RETRY_MAX_DELAY_MS || '30000', 10),
+  retryBackoffFactor: parseFloat(process.env.RETRY_BACKOFF_FACTOR || '2'),
 }).catch((error) => {
   console.error('An error occurred:', error);
   process.exit(1);

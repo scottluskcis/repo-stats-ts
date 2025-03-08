@@ -157,10 +157,12 @@ export async function* getOrgRepoStats({
   org,
   per_page,
   octokit,
+  cursor = null,
 }: {
   org: string;
   per_page: number;
   octokit: Octokit;
+  cursor?: string | null;
 }): AsyncGenerator<RepositoryStats, void, unknown> {
   const IS_EMPTY_FLAG = 'isEmpty';
 
@@ -267,7 +269,7 @@ export async function* getOrgRepoStats({
   const iterator = await octokit.graphql.paginate.iterator(query, {
     login: org,
     pageSize: per_page,
-    cursor: null, // Start with null cursor
+    cursor, // Use provided cursor or null for first page
   });
 
   for await (const response of iterator) {

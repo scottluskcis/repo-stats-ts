@@ -15,11 +15,14 @@ import {
   PullRequestStatsResult,
   RepositoryStats,
   RepoStatsResult,
+  ProcessedPageState,
+  RepoProcessingResult,
 } from './types';
 import { createLogger, logInitialization } from './logger';
 import { createAuthConfig } from './auth';
 import { stringify } from 'csv-stringify/sync';
 import { appendFileSync, existsSync, writeFileSync } from 'fs';
+import { withRetry, RetryConfig } from './utils/retry';
 
 const _init = async (
   opts: Arguments,
@@ -49,63 +52,109 @@ const _init = async (
 
 export async function run(opts: Arguments): Promise<void> {
   const { logger, octokit } = await _init(opts);
-  const rateLimitCheckInterval = opts.rateLimitCheckInterval || 10;
-  let processedCount = 0;
+  const processedState: ProcessedPageState = {
+    cursor: null,
+    processedRepos: new Set<string>(),
+  };
 
+  const retryConfig: RetryConfig = {
+    maxAttempts: opts.retryMaxAttempts || 3,
+    initialDelayMs: opts.retryInitialDelayMs || 1000,
+    maxDelayMs: opts.retryMaxDelayMs || 30000,
+    backoffFactor: opts.retryBackoffFactor || 2,
+  };
+
+  await withRetry(
+    async () => {
+      const result = await processRepositories({
+        octokit,
+        logger,
+        opts,
+        processedState,
+      });
+
+      logger.info(`Completed processing ${result.processedCount} repositories`);
+      return result;
+    },
+    retryConfig,
+    (state) => {
+      logger.warn(
+        `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
+          `Last cursor: ${processedState.cursor}. ` +
+          `Processed repos: ${Array.from(processedState.processedRepos).join(
+            ', ',
+          )}. ` +
+          `Error: ${state.error?.message}`,
+      );
+    },
+  );
+}
+
+async function processRepositories({
+  octokit,
+  logger,
+  opts,
+  processedState,
+}: {
+  octokit: Octokit;
+  logger: Logger;
+  opts: Arguments;
+  processedState: ProcessedPageState;
+}): Promise<RepoProcessingResult> {
   logger.debug('Fetching repositories for organization...');
   const reposIterator = getOrgRepoStats({
     org: opts.orgName,
     per_page: opts.pageSize || 100,
     octokit,
+    cursor: processedState.cursor,
   });
 
-  try {
-    for await (const result of processRepoStats({
-      reposIterator,
-      octokit,
-      logger,
-      pageSize: opts.pageSize || 100,
-    })) {
-      // write result to CSV
-      logger.info(`Processed repository: ${result.Repo_Name}`);
-      await writeResultToCsv(result, logger);
+  const fileName = generateRepoStatsFileName(opts.orgName);
+  logger.info(`Results will be saved to file: ${fileName}`);
 
-      processedCount++;
+  let processedCount = 0;
 
-      // Check rate limits after configured interval
-      if (processedCount % rateLimitCheckInterval === 0) {
-        const rateLimitReached = await checkAndHandleRateLimits({
-          octokit,
-          logger,
-          processedCount,
-        });
-
-        if (rateLimitReached) {
-          logger.warn(
-            `Rate limit reached after processing ${processedCount} repositories. Pausing processing.`,
-          );
-          throw new Error(
-            'Rate limit reached. Processing will be paused until limits reset.',
-          );
-        }
-      }
+  for await (const result of processRepoStats({
+    reposIterator,
+    octokit,
+    logger,
+    pageSize: opts.pageSize || 100,
+    processedState,
+  })) {
+    // Skip if already processed in previous attempt
+    if (processedState.processedRepos.has(result.Repo_Name)) {
+      logger.debug(
+        `Skipping already processed repository: ${result.Repo_Name}`,
+      );
+      continue;
     }
 
-    logger.info(`Completed processing ${processedCount} repositories`);
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.message.includes('rate limit exceeded')) {
-        logger.warn(
-          'Processing paused due to API rate limits. Please retry after the rate limit reset.',
+    await writeResultToCsv(result, fileName, logger);
+    processedState.processedRepos.add(result.Repo_Name);
+    processedCount++;
+
+    // Check rate limits after configured interval
+    if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
+      const rateLimitReached = await checkAndHandleRateLimits({
+        octokit,
+        logger,
+        processedCount,
+      });
+
+      if (rateLimitReached) {
+        throw new Error(
+          'Rate limit reached. Processing will be paused until limits reset.',
         );
-      } else {
-        logger.error(`Error processing repositories: ${error.message}`);
-        throw error;
       }
-    } else {
-      throw error;
     }
   }
+
+  return {
+    cursor: processedState.cursor,
+    processedRepos: processedState.processedRepos,
+    processedCount,
+    isComplete: true,
+  };
 }
 
 async function* processRepoStats({
@@ -113,14 +162,19 @@ async function* processRepoStats({
   octokit,
   logger,
   pageSize,
+  processedState,
 }: {
   reposIterator: AsyncGenerator<RepositoryStats, void, unknown>;
   octokit: Octokit;
   logger: Logger;
   pageSize: number;
+  processedState: ProcessedPageState;
 }): AsyncGenerator<RepoStatsResult> {
   for await (const repo of reposIterator) {
-    logger.info(`Processing repository: ${repo.name}`);
+    // Update cursor from repo's pageInfo
+    if (repo.pageInfo?.endCursor) {
+      processedState.cursor = repo.pageInfo.endCursor;
+    }
 
     // Run issue and PR analysis concurrently
     const [issueStats, prStats] = await Promise.all([
@@ -129,16 +183,16 @@ async function* processRepoStats({
         repo: repo.name,
         per_page: pageSize,
         issues: repo.issues,
-        octokit: octokit,
-        logger: logger,
+        octokit,
+        logger,
       }),
       analyzePullRequests({
         owner: repo.owner.login,
         repo: repo.name,
         per_page: pageSize,
         pullRequests: repo.pullRequests,
-        octokit: octokit,
-        logger: logger,
+        octokit,
+        logger,
       }),
     ]);
 
@@ -193,12 +247,20 @@ async function checkAndHandleRateLimits({
   return false; // indicates rate limit was not reached
 }
 
+export function generateRepoStatsFileName(orgName: string): string {
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[:\.]/g, '-')
+    .replace('T', '_');
+  return `${orgName.toLowerCase()}-repo-stats_${timestamp}.csv`;
+}
+
 async function writeResultToCsv(
   result: RepoStatsResult,
+  fileName: string,
   logger: Logger,
 ): Promise<void> {
   try {
-    const fileName = `${result.Org_Name.toLowerCase()}-repo-stats.csv`;
     const isNewFile = !existsSync(fileName);
 
     // Define columns in specific order matching mapToRepoStatsResult
