@@ -23,6 +23,11 @@ import { createAuthConfig } from './auth';
 import { stringify } from 'csv-stringify/sync';
 import { appendFileSync, existsSync, writeFileSync } from 'fs';
 import { withRetry, RetryConfig } from './retry';
+import {
+  generateRepoStatsFileName,
+  convertKbToMb,
+  checkIfHasMigrationIssues,
+} from './utils';
 
 const _init = async (
   opts: Arguments,
@@ -247,14 +252,6 @@ async function checkAndHandleRateLimits({
   return false; // indicates rate limit was not reached
 }
 
-export function generateRepoStatsFileName(orgName: string): string {
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[:\.]/g, '-')
-    .replace('T', '_');
-  return `${orgName.toLowerCase()}-repo-stats_${timestamp}.csv`;
-}
-
 async function writeResultToCsv(
   result: RepoStatsResult,
   fileName: string,
@@ -370,14 +367,6 @@ function mapToRepoStatsResult(
   };
 }
 
-function convertKbToMb(valueInKb: number): number {
-  if (!Number.isFinite(valueInKb)) {
-    throw new Error(`Invalid input: ${valueInKb} is not a number`);
-  }
-
-  return Math.floor(valueInKb / 1024);
-}
-
 function calculateRecordCount(
   repo: RepositoryStats,
   issueStats: IssueStatsResult,
@@ -400,22 +389,6 @@ function calculateRecordCount(
 
   const allRecordCount = counts.reduce((sum, count) => sum + count, 0);
   return allRecordCount;
-}
-
-function checkIfHasMigrationIssues({
-  repoSizeMb,
-  totalRecordCount,
-}: {
-  repoSizeMb: number;
-  totalRecordCount: number;
-}): boolean {
-  if (totalRecordCount >= 60000) {
-    return true;
-  }
-  if (repoSizeMb > 1500) {
-    return true;
-  }
-  return false;
 }
 
 async function analyzeIssues({
