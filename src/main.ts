@@ -1,11 +1,5 @@
-import { Octokit } from 'octokit/dist-types/octokit';
-import {
-  checkRateLimits,
-  createOctokit,
-  getOrgRepoStats,
-  getRepoIssues,
-  getRepoPullRequests,
-} from './octokit';
+import { OctokitClient } from './service';
+import { createOctokit } from './octokit';
 import {
   Arguments,
   IssuesConnection,
@@ -33,7 +27,7 @@ const _init = async (
   opts: Arguments,
 ): Promise<{
   logger: Logger;
-  octokit: Octokit;
+  client: OctokitClient;
 }> => {
   const logger = createLogger(opts.verbose);
   logInitialization.start(logger);
@@ -49,14 +43,16 @@ const _init = async (
     logger,
   );
 
+  const client = new OctokitClient(octokit);
+
   return {
     logger,
-    octokit,
+    client,
   };
 };
 
 export async function run(opts: Arguments): Promise<void> {
-  const { logger, octokit } = await _init(opts);
+  const { logger, client } = await _init(opts);
   const processedState: ProcessedPageState = {
     cursor: null,
     processedRepos: new Set<string>(),
@@ -72,7 +68,7 @@ export async function run(opts: Arguments): Promise<void> {
   await withRetry(
     async () => {
       const result = await processRepositories({
-        octokit,
+        client,
         logger,
         opts,
         processedState,
@@ -96,23 +92,22 @@ export async function run(opts: Arguments): Promise<void> {
 }
 
 async function processRepositories({
-  octokit,
+  client,
   logger,
   opts,
   processedState,
 }: {
-  octokit: Octokit;
+  client: OctokitClient;
   logger: Logger;
   opts: Arguments;
   processedState: ProcessedPageState;
 }): Promise<RepoProcessingResult> {
   logger.debug('Fetching repositories for organization...');
-  const reposIterator = getOrgRepoStats({
-    org: opts.orgName,
-    per_page: opts.pageSize || 100,
-    octokit,
-    cursor: processedState.cursor,
-  });
+  const reposIterator = client.getOrgRepoStats(
+    opts.orgName,
+    opts.pageSize || 100,
+    processedState.cursor,
+  );
 
   const fileName = generateRepoStatsFileName(opts.orgName);
   logger.info(`Results will be saved to file: ${fileName}`);
@@ -121,7 +116,7 @@ async function processRepositories({
 
   for await (const result of processRepoStats({
     reposIterator,
-    octokit,
+    client,
     logger,
     pageSize: opts.pageSize || 100,
     processedState,
@@ -141,7 +136,7 @@ async function processRepositories({
     // Check rate limits after configured interval
     if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
       const rateLimitReached = await checkAndHandleRateLimits({
-        octokit,
+        client,
         logger,
         processedCount,
       });
@@ -164,13 +159,13 @@ async function processRepositories({
 
 async function* processRepoStats({
   reposIterator,
-  octokit,
+  client,
   logger,
   pageSize,
   processedState,
 }: {
   reposIterator: AsyncGenerator<RepositoryStats, void, unknown>;
-  octokit: Octokit;
+  client: OctokitClient;
   logger: Logger;
   pageSize: number;
   processedState: ProcessedPageState;
@@ -188,7 +183,7 @@ async function* processRepoStats({
         repo: repo.name,
         per_page: pageSize,
         issues: repo.issues,
-        octokit,
+        client,
         logger,
       }),
       analyzePullRequests({
@@ -196,7 +191,7 @@ async function* processRepoStats({
         repo: repo.name,
         per_page: pageSize,
         pullRequests: repo.pullRequests,
-        octokit,
+        client,
         logger,
       }),
     ]);
@@ -212,18 +207,18 @@ async function* processRepoStats({
 }
 
 async function checkAndHandleRateLimits({
-  octokit,
+  client,
   logger,
   processedCount,
 }: {
-  octokit: Octokit;
+  client: OctokitClient;
   logger: Logger;
   processedCount: number;
 }): Promise<boolean> {
   logger.debug(
     `Checking rate limits after processing ${processedCount} repositories`,
   );
-  const rateLimits = await checkRateLimits({ octokit });
+  const rateLimits = await client.checkRateLimits();
 
   if (
     rateLimits.graphQLRemaining === 0 ||
@@ -396,14 +391,14 @@ async function analyzeIssues({
   repo,
   per_page,
   issues,
-  octokit,
+  client,
   logger,
 }: {
   owner: string;
   repo: string;
   per_page: number;
   issues: IssuesConnection;
-  octokit: Octokit;
+  client: OctokitClient;
   logger: Logger;
 }): Promise<IssueStatsResult> {
   logger.debug(`Analyzing issues for repository: ${repo}`);
@@ -441,13 +436,12 @@ async function analyzeIssues({
     const cursor = issues.pageInfo.endCursor;
 
     try {
-      for await (const issue of getRepoIssues({
+      for await (const issue of client.getRepoIssues(
         owner,
         repo,
         per_page,
-        octokit,
         cursor,
-      })) {
+      )) {
         issueEventCount +=
           issue.timeline.totalCount - issue.comments.totalCount;
         issueCommentCount += issue.comments.totalCount;
@@ -476,14 +470,14 @@ async function analyzePullRequests({
   repo,
   per_page,
   pullRequests,
-  octokit,
+  client,
   logger,
 }: {
   owner: string;
   repo: string;
   per_page: number;
   pullRequests: PullRequestsConnection;
-  octokit: Octokit;
+  client: OctokitClient;
   logger: Logger;
 }): Promise<PullRequestStatsResult> {
   if (pullRequests.totalCount <= 0) {
@@ -538,13 +532,12 @@ async function analyzePullRequests({
     pullRequests.pageInfo.endCursor != null
   ) {
     const cursor = pullRequests.pageInfo.endCursor;
-    for await (const pr of getRepoPullRequests({
+    for await (const pr of client.getRepoPullRequests(
       owner,
       repo,
       per_page,
-      octokit,
       cursor,
-    })) {
+    )) {
       const eventCount = pr.timeline.totalCount;
       const commentCount = pr.comments.totalCount;
       const reviewCount = pr.reviews.totalCount;
