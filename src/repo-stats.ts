@@ -22,7 +22,7 @@ import { createLogger, logInitialization } from './logger';
 import { createAuthConfig } from './auth';
 import { stringify } from 'csv-stringify/sync';
 import { appendFileSync, existsSync, writeFileSync } from 'fs';
-import { withRetry, RetryConfig } from './utils/retry';
+import { withRetry, RetryConfig } from './retry';
 
 const _init = async (
   opts: Arguments,

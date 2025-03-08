@@ -3,8 +3,8 @@ import { writeFile, readdir, rename, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { stringify } from 'csv-stringify';
 import { parse } from '@fast-csv/parse';
-import { Logger } from './types';
-import { RepositoryType } from './octokit';
+import { Logger } from '../src/types';
+import { RepositoryType } from '../src/octokit';
 
 export async function createBatchFiles({
   org,

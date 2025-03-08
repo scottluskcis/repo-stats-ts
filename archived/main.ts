@@ -4,22 +4,22 @@ import {
   logProcessingSummary,
   logBatchProcessing,
   logInitialization,
-} from './logger';
-import { createAuthConfig } from './auth';
+} from '../src/logger';
+import { createAuthConfig } from '../src/auth';
 import {
   createOctokit,
   generateAppToken,
   getOrgRepoStats,
   listReposForOrg,
   RepositoryType,
-} from './octokit';
+} from '../src/octokit';
 import {
   Logger,
   Arguments,
   ProcessingSummary,
   ProcessingResult,
   IdentifyFailedReposResult,
-} from './types';
+} from '../src/types';
 import {
   createBatchFiles,
   ensureOutputDirectoriesExist,
@@ -33,7 +33,7 @@ import {
   checkGhRepoStatsInstalled,
   getProcessedRepos,
   runRepoStats,
-} from './repo-stats-shell';
+} from '../src/repo-stats-shell';
 
 const _init = async (
   opts: Arguments,
