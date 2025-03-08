@@ -50,7 +50,7 @@ export async function run(opts: Arguments): Promise<void> {
   logger.debug('Fetching repositories for organization...');
   const reposIterator = getOrgRepoStats({
     org: opts.orgName,
-    per_page: 10, // opts.pageSize || 100,
+    per_page: opts.pageSize || 100,
     octokit,
   });
 
@@ -61,25 +61,25 @@ export async function run(opts: Arguments): Promise<void> {
     logger.info(`Processing repository: ${repo.name}`);
     count++;
 
-    // analyze issue details
-    const issueStats = await analyzeIssues({
-      owner: repo.owner.login,
-      repo: repo.name,
-      per_page: opts.pageSize || 100,
-      issues: repo.issues,
-      octokit: octokit,
-      logger: logger,
-    });
-
-    // analyze pull request details
-    const prStats = await analyzePullRequests({
-      owner: repo.owner.login,
-      repo: repo.name,
-      per_page: opts.pageSize || 100,
-      pullRequests: repo.pullRequests,
-      octokit: octokit,
-      logger: logger,
-    });
+    // Run issue and PR analysis concurrently
+    const [issueStats, prStats] = await Promise.all([
+      analyzeIssues({
+        owner: repo.owner.login,
+        repo: repo.name,
+        per_page: opts.pageSize || 100,
+        issues: repo.issues,
+        octokit: octokit,
+        logger: logger,
+      }),
+      analyzePullRequests({
+        owner: repo.owner.login,
+        repo: repo.name,
+        per_page: opts.pageSize || 100,
+        pullRequests: repo.pullRequests,
+        octokit: octokit,
+        logger: logger,
+      }),
+    ]);
 
     // map to object that will be sent to output
     repo_stats.push(
@@ -87,7 +87,7 @@ export async function run(opts: Arguments): Promise<void> {
     );
 
     if (count > 30) {
-      logger.info('Processed 100 repositories, stopping...');
+      logger.info('Processed 30 repositories, stopping...');
       break;
     }
   }
