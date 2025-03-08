@@ -242,6 +242,10 @@ async function checkAndHandleRateLimits({
     logger.info(`REST API remaining: ${rateLimits.apiRemainingRequest}`);
 
     return true; // indicates rate limit was reached
+  } else {
+    logger.info(
+      `GraphQL remaining: ${rateLimits.graphQLRemaining}, REST API remaining: ${rateLimits.apiRemainingRequest}`,
+    );
   }
 
   return false; // indicates rate limit was not reached
