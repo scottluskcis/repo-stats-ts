@@ -18,6 +18,8 @@ import {
 } from './types';
 import { createLogger, logInitialization } from './logger';
 import { createAuthConfig } from './auth';
+import { stringify } from 'csv-stringify/sync';
+import { appendFileSync, existsSync, writeFileSync } from 'fs';
 
 const _init = async (
   opts: Arguments,
@@ -195,8 +197,70 @@ async function writeResultToCsv(
   result: RepoStatsResult,
   logger: Logger,
 ): Promise<void> {
-  // TODO: Implement CSV writing logic
-  logger.debug(`Writing result for repository: ${result.Repo_Name}`);
+  try {
+    const fileName = `${result.Org_Name.toLowerCase()}-repo-stats.csv`;
+    const isNewFile = !existsSync(fileName);
+
+    // Define columns in specific order matching mapToRepoStatsResult
+    const columns = [
+      'Org_Name',
+      'Repo_Name',
+      'Is_Empty',
+      'Last_Push',
+      'Last_Update',
+      'isFork',
+      'isArchived',
+      'Disk_Size_kb',
+      'Repo_Size_mb',
+      'Record_Count',
+      'Collaborator_Count',
+      'Protected_Branch_Count',
+      'PR_Review_Count',
+      'PR_Review_Comment_Count',
+      'Commit_Comment_Count',
+      'Milestone_Count',
+      'PR_Count',
+      'Project_Count',
+      'Branch_Count',
+      'Release_Count',
+      'Issue_Count',
+      'Issue_Event_Count',
+      'Issue_Comment_Count',
+      'Tag_Count',
+      'Discussion_Count',
+      'Has_Wiki',
+      'Full_URL',
+      'Migration_Issue',
+      'Created',
+    ];
+
+    if (isNewFile) {
+      // Write header and first row for new files
+      const csvContent = stringify([result], {
+        header: true,
+        columns: columns,
+      });
+      writeFileSync(fileName, csvContent);
+    } else {
+      // Append only the data row for existing files
+      const csvRow = stringify([result], {
+        header: false,
+        columns: columns,
+      });
+      appendFileSync(fileName, csvRow);
+    }
+
+    logger.debug(
+      `Successfully wrote result for repository: ${result.Repo_Name}`,
+    );
+  } catch (error) {
+    logger.error(
+      `Failed to write CSV for repository ${result.Repo_Name}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    throw error;
+  }
 }
 
 function mapToRepoStatsResult(
