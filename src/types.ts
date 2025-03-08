@@ -196,6 +196,6 @@ export interface RepoStatsResult {
   Discussion_Count: number;
   Has_Wiki: boolean;
   Full_URL: string;
-  Migration_Issue?: string | null;
+  Migration_Issue?: boolean | null;
   Created?: string | null;
 }

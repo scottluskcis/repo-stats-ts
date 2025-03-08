@@ -99,6 +99,12 @@ function mapToRepoStatsResult(
   prStats: PullRequestStatsResult,
   orgName: string,
 ): RepoStatsResult {
+  const repoSizeMb = convertKbToMb(repo.diskUsage);
+  const totalRecordCount = calculateRecordCount(repo, issueStats, prStats);
+  const hasMigrationIssues = checkIfHasMigrationIssues({
+    repoSizeMb,
+    totalRecordCount,
+  });
   return {
     Org_Name: orgName,
     Repo_Name: repo.name,
@@ -108,8 +114,8 @@ function mapToRepoStatsResult(
     isFork: repo.isFork,
     isArchived: repo.isArchived,
     Disk_Size_kb: repo.diskUsage,
-    Repo_Size_mb: convertKbToMb(repo.diskUsage),
-    Record_Count: calculateRecordCount(repo, issueStats, prStats),
+    Repo_Size_mb: repoSizeMb,
+    Record_Count: totalRecordCount,
     Collaborator_Count: repo.collaborators.totalCount,
     Protected_Branch_Count: repo.branchProtectionRules.totalCount,
     PR_Review_Count: repo.pullRequests.totalCount,
@@ -127,7 +133,7 @@ function mapToRepoStatsResult(
     Discussion_Count: repo.discussions.totalCount,
     Has_Wiki: repo.hasWikiEnabled,
     Full_URL: repo.url,
-    Migration_Issue: null, // analyze
+    Migration_Issue: hasMigrationIssues,
     Created: repo.createdAt,
   };
 }
@@ -164,13 +170,29 @@ function calculateRecordCount(
   return allRecordCount;
 }
 
+function checkIfHasMigrationIssues({
+  repoSizeMb,
+  totalRecordCount,
+}: {
+  repoSizeMb: number;
+  totalRecordCount: number;
+}): boolean {
+  if (totalRecordCount >= 60000) {
+    return true;
+  }
+  if (repoSizeMb > 1500) {
+    return true;
+  }
+  return false;
+}
+
 async function analyzeIssues({
   owner,
   repo,
   per_page,
   issues,
   octokit,
-  logger, // Add logger parameter
+  logger,
 }: {
   owner: string;
   repo: string;
