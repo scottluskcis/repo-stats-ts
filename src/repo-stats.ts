@@ -8,8 +8,10 @@ import {
 import {
   Arguments,
   IssuesConnection,
+  IssueStatsResult,
   Logger,
   PullRequestsConnection,
+  PullRequestStatsResult,
   RepositoryStats,
   RepoStatsResult,
 } from './types';
@@ -93,15 +95,8 @@ export async function run(opts: Arguments): Promise<void> {
 
 function mapToRepoStatsResult(
   repo: RepositoryStats,
-  issueStats: {
-    totalIssuesCount: number;
-    issueEventCount: number;
-    issueCommentCount: number;
-  },
-  prStats: {
-    prReviewCommentCount: number;
-    commitCommentCount: number;
-  },
+  issueStats: IssueStatsResult,
+  prStats: PullRequestStatsResult,
   orgName: string,
 ): RepoStatsResult {
   return {
@@ -114,7 +109,7 @@ function mapToRepoStatsResult(
     isArchived: repo.isArchived,
     Disk_Size_kb: repo.diskUsage,
     Repo_Size_mb: convertKbToMb(repo.diskUsage),
-    Record_Count: calculateRecordCount(repo),
+    Record_Count: calculateRecordCount(repo, issueStats, prStats),
     Collaborator_Count: repo.collaborators.totalCount,
     Protected_Branch_Count: repo.branchProtectionRules.totalCount,
     PR_Review_Count: repo.pullRequests.totalCount,
@@ -145,9 +140,28 @@ function convertKbToMb(valueInKb: number): number {
   return Math.floor(valueInKb / 1024);
 }
 
-function calculateRecordCount(repo: RepositoryStats): number {
-  // Placeholder for record count calculation logic
-  return 0;
+function calculateRecordCount(
+  repo: RepositoryStats,
+  issueStats: IssueStatsResult,
+  prStats: PullRequestStatsResult,
+): number {
+  const counts = [
+    repo.collaborators.totalCount,
+    repo.branchProtectionRules.totalCount,
+    repo.pullRequests.totalCount,
+    repo.milestones.totalCount,
+    issueStats.totalIssuesCount,
+    repo.pullRequests.totalCount,
+    prStats.prReviewCommentCount,
+    repo.commitComments.totalCount,
+    issueStats.issueCommentCount,
+    issueStats.issueEventCount,
+    repo.releases.totalCount,
+    repo.projects.totalCount,
+  ];
+
+  const allRecordCount = counts.reduce((sum, count) => sum + count, 0);
+  return allRecordCount;
 }
 
 async function analyzeIssues({
@@ -164,11 +178,7 @@ async function analyzeIssues({
   issues: IssuesConnection;
   octokit: Octokit;
   logger: Logger;
-}): Promise<{
-  totalIssuesCount: number;
-  issueEventCount: number;
-  issueCommentCount: number;
-}> {
+}): Promise<IssueStatsResult> {
   logger.debug(`Analyzing issues for repository: ${repo}`);
 
   if (issues.totalCount <= 0) {
@@ -248,13 +258,7 @@ async function analyzePullRequests({
   pullRequests: PullRequestsConnection;
   octokit: Octokit;
   logger: Logger;
-}): Promise<{
-  prReviewCommentCount: number;
-  commitCommentCount: number;
-  issueEventCount: number;
-  issueCommentCount: number;
-  prReviewCount: number;
-}> {
+}): Promise<PullRequestStatsResult> {
   if (pullRequests.totalCount <= 0) {
     return {
       prReviewCommentCount: 0,

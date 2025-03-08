@@ -154,6 +154,20 @@ export interface PullRequestResponse {
   };
 }
 
+export interface IssueStatsResult {
+  totalIssuesCount: number;
+  issueEventCount: number;
+  issueCommentCount: number;
+}
+
+export interface PullRequestStatsResult {
+  prReviewCommentCount: number;
+  commitCommentCount: number;
+  issueEventCount: number;
+  issueCommentCount: number;
+  prReviewCount: number;
+}
+
 export interface RepoStatsResult {
   Org_Name: string;
   Repo_Name: string;
