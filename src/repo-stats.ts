@@ -54,19 +54,44 @@ export async function run(opts: Arguments): Promise<void> {
     octokit,
   });
 
-  const repo_stats: RepoStatsResult[] = [];
-
   let count = 0;
+  for await (const result of processRepoStats({
+    reposIterator,
+    octokit,
+    logger,
+    pageSize: opts.pageSize || 100,
+  })) {
+    logger.info(`Processed repository: ${result.Repo_Name}`);
+    await writeResultToCsv(result, logger);
+    count++;
+
+    if (count > 30) {
+      logger.info('Processed 30 repositories, stopping...');
+      break;
+    }
+  }
+}
+
+async function* processRepoStats({
+  reposIterator,
+  octokit,
+  logger,
+  pageSize,
+}: {
+  reposIterator: AsyncGenerator<RepositoryStats, void, unknown>;
+  octokit: Octokit;
+  logger: Logger;
+  pageSize: number;
+}): AsyncGenerator<RepoStatsResult> {
   for await (const repo of reposIterator) {
     logger.info(`Processing repository: ${repo.name}`);
-    count++;
 
     // Run issue and PR analysis concurrently
     const [issueStats, prStats] = await Promise.all([
       analyzeIssues({
         owner: repo.owner.login,
         repo: repo.name,
-        per_page: opts.pageSize || 100,
+        per_page: pageSize,
         issues: repo.issues,
         octokit: octokit,
         logger: logger,
@@ -74,23 +99,29 @@ export async function run(opts: Arguments): Promise<void> {
       analyzePullRequests({
         owner: repo.owner.login,
         repo: repo.name,
-        per_page: opts.pageSize || 100,
+        per_page: pageSize,
         pullRequests: repo.pullRequests,
         octokit: octokit,
         logger: logger,
       }),
     ]);
 
-    // map to object that will be sent to output
-    repo_stats.push(
-      mapToRepoStatsResult(repo, issueStats, prStats, opts.orgName),
+    const result = mapToRepoStatsResult(
+      repo,
+      issueStats,
+      prStats,
+      repo.owner.login,
     );
-
-    if (count > 30) {
-      logger.info('Processed 30 repositories, stopping...');
-      break;
-    }
+    yield result;
   }
+}
+
+async function writeResultToCsv(
+  result: RepoStatsResult,
+  logger: Logger,
+): Promise<void> {
+  // TODO: Implement CSV writing logic
+  logger.debug(`Writing result for repository: ${result.Repo_Name}`);
 }
 
 function mapToRepoStatsResult(
@@ -310,9 +341,9 @@ async function analyzePullRequests({
     if (redundantEventCount > eventCount) {
       logger.warn(
         `Warning: More redundant events than timeline events for PR ${pr.number}!
-         EVENT_CT: ${eventCount}
-         COMMENT_CT: ${commentCount}
-         COMMIT_CT: ${commitCount}`,
+         eventCount: ${eventCount}
+         commentCount: ${commentCount}
+         commitCount: ${commitCount}`,
       );
     }
 
@@ -350,9 +381,9 @@ async function analyzePullRequests({
       if (redundantEventCount > eventCount) {
         logger.warn(
           `Warning: More redundant events than timeline events for PR ${pr.number}!
-           EVENT_CT: ${eventCount}
-           COMMENT_CT: ${commentCount}
-           COMMIT_CT: ${commitCount}`,
+           eventCount: ${eventCount}
+           commentCount: ${commentCount}
+           commitCount: ${commitCount}`,
         );
       }
 
