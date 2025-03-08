@@ -1,6 +1,7 @@
 import { Octokit } from 'octokit';
-import { components } from '@octokit/openapi-types/types';
+import { components } from '@octokit/openapi-types';
 import {
+  AuthResponse,
   IssuesResponse,
   IssueStats,
   PullRequestNode,
@@ -8,7 +9,9 @@ import {
   RateLimitResponse,
   RateLimitResult,
   RepositoryStats,
-} from './types';
+} from './types.js';
+
+type Repository = components['schemas']['repository'];
 
 export class OctokitClient {
   private readonly octokit_headers = {
@@ -18,9 +21,9 @@ export class OctokitClient {
   constructor(private readonly octokit: Octokit) {}
 
   async generateAppToken(): Promise<string> {
-    const appToken = await this.octokit.auth({
+    const appToken = (await this.octokit.auth({
       type: 'installation',
-    });
+    })) as AuthResponse;
     process.env.GH_TOKEN = appToken.token;
     return appToken.token;
   }
@@ -29,7 +32,7 @@ export class OctokitClient {
     org: string,
     per_page: number,
   ): AsyncGenerator<components['schemas']['repository'], void, unknown> {
-    const iterator = await this.octokit.paginate.iterator(
+    const iterator = this.octokit.paginate.iterator(
       this.octokit.rest.repos.listForOrg,
       {
         org,
@@ -42,7 +45,7 @@ export class OctokitClient {
 
     for await (const { data: repos } of iterator) {
       for (const repo of repos) {
-        yield repo;
+        yield repo as Repository;
       }
     }
   }
@@ -153,7 +156,7 @@ export class OctokitClient {
         }
       }`;
 
-    const iterator = await this.octokit.graphql.paginate.iterator(query, {
+    const iterator = this.octokit.graphql.paginate.iterator(query, {
       login: org,
       pageSize: per_page,
       cursor,
@@ -247,7 +250,7 @@ export class OctokitClient {
         }
       }`;
 
-    const iterator = await this.octokit.graphql.paginate.iterator(query, {
+    const iterator = this.octokit.graphql.paginate.iterator(query, {
       owner,
       repo,
       pageSize: per_page,

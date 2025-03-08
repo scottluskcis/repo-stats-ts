@@ -32,6 +32,12 @@ export interface Arguments {
   retryBackoffFactor?: number;
 }
 
+export type AuthResponse = {
+  type: string;
+  token: string;
+  tokenType?: string;
+};
+
 export interface ProcessingSummary {
   initiallyProcessed: number;
   totalRetried: number;

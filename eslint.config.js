@@ -11,19 +11,19 @@ export default [
       parser: typescript,
       parserOptions: {
         ecmaVersion: 2020,
-        sourceType: 'module'
-      }
+        sourceType: 'module',
+      },
     },
     plugins: {
-      '@typescript-eslint': tseslint
+      '@typescript-eslint': tseslint,
     },
     rules: {
       ...tseslint.configs.recommended.rules,
       // Add any custom rules here
-    }
+    },
   },
   {
-    ignores: ['dist/**', 'node_modules/**']
+    ignores: ['dist/**', 'node_modules/**'],
   },
-  prettier
+  prettier,
 ];

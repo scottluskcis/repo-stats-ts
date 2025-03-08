@@ -1,14 +1,14 @@
-import { createAppAuth, StrategyOptions } from '@octokit/auth-app';
-import { AuthInterface } from '@octokit/auth-app/dist-types/types';
-import { Logger } from './types';
+import { createAppAuth } from '@octokit/auth-app';
+import type {
+  AppAuthOptions,
+  InstallationAuthOptions,
+} from '@octokit/auth-app';
+import { Logger } from './types.js';
 import { readFileSync } from 'fs';
 
 export interface AuthConfig {
-  authStrategy?: ((options: StrategyOptions) => AuthInterface) | undefined;
-  auth:
-    | string
-    | { appId: number; privateKey: string; installationId: number }
-    | undefined;
+  authStrategy?: typeof createAppAuth | undefined;
+  auth: string | AppAuthOptions | InstallationAuthOptions | undefined;
 }
 
 const getAuthAppId = (appId?: string): number => {
@@ -21,7 +21,10 @@ const getAuthAppId = (appId?: string): number => {
   return parseInt(authAppId);
 };
 
-const getAuthPrivateKey = (privateKey?: string, privateKeyFile?: string): string => {
+const getAuthPrivateKey = (
+  privateKey?: string,
+  privateKeyFile?: string,
+): string => {
   let authPrivateKey: string | undefined;
 
   if (privateKeyFile || process.env.GITHUB_APP_PRIVATE_KEY_FILE) {
@@ -41,7 +44,8 @@ const getAuthPrivateKey = (privateKey?: string, privateKeyFile?: string): string
 };
 
 const getAuthInstallationId = (appInstallationId?: string): number => {
-  const authInstallationId = appInstallationId || process.env.GITHUB_APP_INSTALLATION_ID;
+  const authInstallationId =
+    appInstallationId || process.env.GITHUB_APP_INSTALLATION_ID;
   if (!authInstallationId || isNaN(parseInt(authInstallationId))) {
     throw new Error(
       'You must specify a GitHub app installation ID using the --app-installation-id argument or GITHUB_APP_INSTALLATION_ID environment variable.',
@@ -66,7 +70,8 @@ const getInstallationAuthConfig = (
   privateKeyFile?: string,
   appInstallationId?: string,
 ): AuthConfig => {
-  const auth = {
+  const auth: InstallationAuthOptions = {
+    type: 'installation',
     appId: getAuthAppId(appId),
     privateKey: getAuthPrivateKey(privateKey, privateKeyFile),
     installationId: getAuthInstallationId(appInstallationId),

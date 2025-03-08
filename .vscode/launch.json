@@ -6,7 +6,7 @@
       "request": "launch",
       "name": "Debug TypeScript",
       "skipFiles": ["<node_internals>/**"],
-      "runtimeExecutable": "tsx",  // Add this line
+      "runtimeExecutable": "tsx", // Add this line
       "program": "${workspaceFolder}/src/index.ts",
       "sourceMaps": true,
       "cwd": "${workspaceFolder}",

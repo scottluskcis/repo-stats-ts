@@ -1,22 +1,22 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist",
+    "allowJs": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "noImplicitAny": true,
-    "moduleResolution": "Node"
+    "strict": true
   },
-  "include": [
-    "./src",
-    "./test",
-    "./script",
-    "jest.config.ts",
-    "archived/main.ts",
-    "archived/file-utils.ts"
+  "exclude": [
+    "__fixtures__",
+    "__tests__",
+    "coverage",
+    "dist",
+    "node_modules",
+    "archived"
   ],
-  "exclude": ["node_modules", "archived"]
+  "include": ["src"]
 }

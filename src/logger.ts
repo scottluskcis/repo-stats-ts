@@ -1,7 +1,7 @@
 import * as winston from 'winston';
 const { combine, timestamp, printf, colorize } = winston.format;
 
-import { Logger, ProcessingSummary } from './types';
+import { Logger, ProcessingSummary } from './types.js';
 
 // TODO: Figure out how to make ESLint happy with this
 // eslint-disable-next-line @typescript-eslint/restrict-template-expressions

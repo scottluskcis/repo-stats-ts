@@ -1,5 +1,5 @@
-import { OctokitClient } from './service';
-import { createOctokit } from './octokit';
+import { OctokitClient } from './service.js';
+import { createOctokit } from './octokit.js';
 import {
   Arguments,
   IssuesConnection,
@@ -11,17 +11,17 @@ import {
   RepoStatsResult,
   ProcessedPageState,
   RepoProcessingResult,
-} from './types';
-import { createLogger, logInitialization } from './logger';
-import { createAuthConfig } from './auth';
+} from './types.js';
+import { createLogger, logInitialization } from './logger.js';
+import { createAuthConfig } from './auth.js';
 import { stringify } from 'csv-stringify/sync';
 import { appendFileSync, existsSync, writeFileSync } from 'fs';
-import { withRetry, RetryConfig } from './retry';
+import { withRetry, RetryConfig } from './retry.js';
 import {
   generateRepoStatsFileName,
   convertKbToMb,
   checkIfHasMigrationIssues,
-} from './utils';
+} from './utils.js';
 
 const _init = async (
   opts: Arguments,
