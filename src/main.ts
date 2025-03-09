@@ -56,6 +56,8 @@ export async function run(opts: Arguments): Promise<void> {
   const processedState: ProcessedPageState = {
     cursor: null,
     processedRepos: new Set<string>(),
+    lastSuccessfulCursor: null,
+    lastProcessedRepo: null,
   };
 
   const retryConfig: RetryConfig = {
@@ -74,17 +76,21 @@ export async function run(opts: Arguments): Promise<void> {
         processedState,
       });
 
-      logger.info(`Completed processing ${result.processedCount} repositories`);
+      logger.info(
+        `Completed processing ${result.processedCount} repositories. ` +
+          `Last cursor: ${result.cursor}, ` +
+          `Last repo: ${processedState.lastProcessedRepo}`,
+      );
       return result;
     },
     retryConfig,
     (state) => {
       logger.warn(
         `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
-          `Last cursor: ${processedState.cursor}. ` +
-          `Processed repos: ${Array.from(processedState.processedRepos).join(
-            ', ',
-          )}. ` +
+          `Current cursor: ${processedState.cursor}, ` +
+          `Last successful cursor: ${processedState.lastSuccessfulCursor}, ` +
+          `Last processed repo: ${processedState.lastProcessedRepo}, ` +
+          `Processed repos count: ${processedState.processedRepos.size}, ` +
           `Error: ${state.error?.message}`,
       );
     },
@@ -102,11 +108,12 @@ async function processRepositories({
   opts: Arguments;
   processedState: ProcessedPageState;
 }): Promise<RepoProcessingResult> {
-  logger.debug('Fetching repositories for organization...');
+  logger.debug(`Starting/Resuming from cursor: ${processedState.cursor}`);
+
   const reposIterator = client.getOrgRepoStats(
     opts.orgName,
     opts.pageSize || 10,
-    processedState.cursor,
+    processedState.cursor || processedState.lastSuccessfulCursor,
   );
 
   const fileName = generateRepoStatsFileName(opts.orgName);
@@ -121,36 +128,45 @@ async function processRepositories({
     extraPageSize: opts.extraPageSize || 50,
     processedState,
   })) {
-    // Skip if already processed in previous attempt
-    if (processedState.processedRepos.has(result.Repo_Name)) {
-      logger.debug(
-        `Skipping already processed repository: ${result.Repo_Name}`,
-      );
-      continue;
-    }
-
-    await writeResultToCsv(result, fileName, logger);
-    processedState.processedRepos.add(result.Repo_Name);
-    processedCount++;
-
-    // Check rate limits after configured interval
-    if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
-      const rateLimitReached = await checkAndHandleRateLimits({
-        client,
-        logger,
-        processedCount,
-      });
-
-      if (rateLimitReached) {
-        throw new Error(
-          'Rate limit reached. Processing will be paused until limits reset.',
+    try {
+      // Skip if already processed in previous attempt
+      if (processedState.processedRepos.has(result.Repo_Name)) {
+        logger.debug(
+          `Skipping already processed repository: ${result.Repo_Name}`,
         );
+        continue;
       }
+
+      await writeResultToCsv(result, fileName, logger);
+      processedState.processedRepos.add(result.Repo_Name);
+      processedState.lastProcessedRepo = result.Repo_Name;
+      processedState.lastSuccessfulCursor = processedState.cursor;
+      processedCount++;
+
+      // Check rate limits after configured interval
+      if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
+        const rateLimitReached = await checkAndHandleRateLimits({
+          client,
+          logger,
+          processedCount,
+        });
+
+        if (rateLimitReached) {
+          throw new Error(
+            'Rate limit reached. Processing will be paused until limits reset.',
+          );
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed processing repo ${result.Repo_Name}: ${error}`);
+      // On error, restore cursor to last successful position
+      processedState.cursor = processedState.lastSuccessfulCursor;
+      throw error;
     }
   }
 
   return {
-    cursor: processedState.cursor,
+    cursor: processedState.lastSuccessfulCursor,
     processedRepos: processedState.processedRepos,
     processedCount,
     isComplete: true,
@@ -174,6 +190,7 @@ async function* processRepoStats({
     // Update cursor from repo's pageInfo
     if (repo.pageInfo?.endCursor) {
       processedState.cursor = repo.pageInfo.endCursor;
+      logger.debug(`Updated cursor to: ${processedState.cursor}`);
     }
 
     // Run issue and PR analysis concurrently

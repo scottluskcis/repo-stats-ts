@@ -253,6 +253,8 @@ export interface RetryState {
 export interface ProcessedPageState {
   cursor: string | null;
   processedRepos: Set<string>;
+  lastSuccessfulCursor: string | null;
+  lastProcessedRepo: string | null;
 }
 
 export interface RepoProcessingResult {
