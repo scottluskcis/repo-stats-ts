@@ -310,20 +310,18 @@ async function writeResultToCsv(
     ];
 
     if (isNewFile) {
-      // Write header and first row for new files
-      const csvContent = stringify([result], {
-        header: true,
-        columns: columns,
-      });
-      writeFileSync(fileName, csvContent);
-    } else {
-      // Append only the data row for existing files
-      const csvRow = stringify([result], {
-        header: false,
-        columns: columns,
-      });
-      appendFileSync(fileName, csvRow);
+      logger.info(`Creating new CSV file: ${fileName}`);
+      // Write header for new files
+      const headerRow = stringify([columns], { header: false });
+      writeFileSync(fileName, headerRow);
     }
+
+    // Always append the data row
+    const csvRow = stringify([result], {
+      header: false,
+      columns: columns,
+    });
+    appendFileSync(fileName, csvRow);
 
     logger.debug(
       `Successfully wrote result for repository: ${result.Repo_Name}`,
