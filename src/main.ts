@@ -105,7 +105,7 @@ async function processRepositories({
   logger.debug('Fetching repositories for organization...');
   const reposIterator = client.getOrgRepoStats(
     opts.orgName,
-    opts.pageSize || 100,
+    opts.pageSize || 10,
     processedState.cursor,
   );
 
@@ -118,7 +118,7 @@ async function processRepositories({
     reposIterator,
     client,
     logger,
-    pageSize: opts.pageSize || 100,
+    extraPageSize: opts.extraPageSize || 50,
     processedState,
   })) {
     // Skip if already processed in previous attempt
@@ -161,13 +161,13 @@ async function* processRepoStats({
   reposIterator,
   client,
   logger,
-  pageSize,
+  extraPageSize,
   processedState,
 }: {
   reposIterator: AsyncGenerator<RepositoryStats, void, unknown>;
   client: OctokitClient;
   logger: Logger;
-  pageSize: number;
+  extraPageSize: number;
   processedState: ProcessedPageState;
 }): AsyncGenerator<RepoStatsResult> {
   for await (const repo of reposIterator) {
@@ -181,7 +181,7 @@ async function* processRepoStats({
       analyzeIssues({
         owner: repo.owner.login,
         repo: repo.name,
-        per_page: pageSize,
+        per_page: extraPageSize,
         issues: repo.issues,
         client,
         logger,
@@ -189,7 +189,7 @@ async function* processRepoStats({
       analyzePullRequests({
         owner: repo.owner.login,
         repo: repo.name,
-        per_page: pageSize,
+        per_page: extraPageSize,
         pullRequests: repo.pullRequests,
         client,
         logger,

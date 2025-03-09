@@ -15,6 +15,7 @@ export interface Arguments {
   baseUrl: string;
   proxyUrl: string | undefined;
   pageSize?: number;
+  extraPageSize?: number;
 
   // logging
   verbose: boolean;
