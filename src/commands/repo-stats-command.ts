@@ -1,6 +1,9 @@
 import * as commander from 'commander';
 import { parseFloatOption, parseIntOption } from '../utils.js';
 import { Arguments } from '../types.js';
+import VERSION from '../version.js';
+
+import { run } from '../main.js';
 
 const repoStatsCommand = new commander.Command();
 const { Option } = commander;
@@ -8,7 +11,7 @@ const { Option } = commander;
 repoStatsCommand
   .name('repo-stats')
   .description('Command to run repo-stats')
-  .version('1.0.0')
+  .version(VERSION)
   .addOption(
     new Option(
       '-o, --org-name <org>',
@@ -100,12 +103,11 @@ repoStatsCommand
       .argParser(parseFloatOption),
   )
   .action(async (options: Arguments) => {
-    const { orgName } = options;
-    if (!orgName) {
-      console.error('Error: Organization name is required.');
-      process.exit(1);
-    }
-    console.log(`Running repo-stats for organization: ${orgName}`);
+    console.log('Version:', VERSION);
+
+    console.log('Starting repo-stats...');
+    await run(options);
+    console.log('Repo-stats completed.');
   });
 
 export default repoStatsCommand;

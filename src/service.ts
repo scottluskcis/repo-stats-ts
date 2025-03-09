@@ -266,8 +266,8 @@ export class OctokitClient {
   }
 
   async checkRateLimits(
-    sleepSeconds: number = 60,
-    maxRetries: number = 5,
+    sleepSeconds = 60,
+    maxRetries = 5,
   ): Promise<RateLimitResult> {
     const result: RateLimitResult = {
       apiRemainingRequest: 0,

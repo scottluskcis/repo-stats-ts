@@ -10,8 +10,13 @@ export default [
     languageOptions: {
       parser: typescript,
       parserOptions: {
-        ecmaVersion: 2020,
+        ecmaVersion: 'latest',
         sourceType: 'module',
+      },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        setTimeout: 'readonly',
       },
     },
     plugins: {
@@ -19,7 +24,15 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
-      // Add any custom rules here
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-inferrable-types': 'warn',
+      'no-useless-escape': 'off',
+    },
+  },
+  {
+    files: ['**/octokit.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
   {
