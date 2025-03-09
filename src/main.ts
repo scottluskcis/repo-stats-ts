@@ -21,6 +21,7 @@ import {
   generateRepoStatsFileName,
   convertKbToMb,
   checkIfHasMigrationIssues,
+  formatElapsedTime,
 } from './utils.js';
 
 const _init = async (
@@ -53,6 +54,9 @@ const _init = async (
 
 export async function run(opts: Arguments): Promise<void> {
   const { logger, client } = await _init(opts);
+  const startTime = new Date();
+  logger.info(`Started processing at: ${startTime.toISOString()}`);
+
   const processedState: ProcessedPageState = {
     cursor: null,
     processedRepos: new Set<string>(),
@@ -67,6 +71,8 @@ export async function run(opts: Arguments): Promise<void> {
     backoffFactor: opts.retryBackoffFactor || 2,
   };
 
+  let retryCount = 0;
+
   await withRetry(
     async () => {
       const result = await processRepositories({
@@ -76,22 +82,31 @@ export async function run(opts: Arguments): Promise<void> {
         processedState,
       });
 
+      const endTime = new Date();
+      const elapsedTime = formatElapsedTime(startTime, endTime);
+
       logger.info(
         `Completed processing ${result.processedCount} repositories. ` +
           `Last cursor: ${result.cursor}, ` +
-          `Last repo: ${processedState.lastProcessedRepo}`,
+          `Last repo: ${processedState.lastProcessedRepo}\n` +
+          `Start time: ${startTime.toISOString()}\n` +
+          `End time: ${endTime.toISOString()}\n` +
+          `Total elapsed time: ${elapsedTime}\n` +
+          `Total retry attempts: ${retryCount}`,
       );
       return result;
     },
     retryConfig,
     (state) => {
+      retryCount++;
       logger.warn(
         `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
           `Current cursor: ${processedState.cursor}, ` +
           `Last successful cursor: ${processedState.lastSuccessfulCursor}, ` +
           `Last processed repo: ${processedState.lastProcessedRepo}, ` +
           `Processed repos count: ${processedState.processedRepos.size}, ` +
-          `Error: ${state.error?.message}`,
+          `Error: ${state.error?.message}\n` +
+          `Elapsed time so far: ${formatElapsedTime(startTime, new Date())}`,
       );
     },
   );
