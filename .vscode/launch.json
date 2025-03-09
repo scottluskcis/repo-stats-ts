@@ -4,10 +4,11 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug TypeScript",
+      "name": "repo-stats Debug",
       "skipFiles": ["<node_internals>/**"],
-      "runtimeExecutable": "tsx", // Add this line
+      "runtimeExecutable": "tsx",
       "program": "${workspaceFolder}/src/index.ts",
+      "args": ["repo-stats"],
       "sourceMaps": true,
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

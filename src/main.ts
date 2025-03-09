@@ -60,8 +60,8 @@ export async function run(opts: Arguments): Promise<void> {
 
   const retryConfig: RetryConfig = {
     maxAttempts: opts.retryMaxAttempts || 3,
-    initialDelayMs: opts.retryInitialDelayMs || 1000,
-    maxDelayMs: opts.retryMaxDelayMs || 30000,
+    initialDelayMs: opts.retryInitialDelay || 1000,
+    maxDelayMs: opts.retryMaxDelay || 30000,
     backoffFactor: opts.retryBackoffFactor || 2,
   };
 

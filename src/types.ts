@@ -8,27 +8,31 @@ export interface Logger {
 }
 
 export interface Arguments {
-  accessToken?: string;
-  baseUrl: string;
+  // context
   orgName: string;
-  outputPath: string | undefined;
+
+  // octokit
+  baseUrl: string;
   proxyUrl: string | undefined;
-  skipArchived: boolean;
+  pageSize?: number;
+
+  // logging
   verbose: boolean;
+
+  // auth
+  accessToken?: string;
   appId?: string | undefined;
   privateKey?: string | undefined;
   privateKeyFile?: string | undefined;
   appInstallationId?: string | undefined;
-  batchSize?: number;
-  createBatchFiles?: boolean;
-  maxRetryAttempts?: number;
-  retryDelaySeconds?: number;
-  pageSize?: number;
-  extraPageSize?: number;
+
+  // rate limit check
   rateLimitCheckInterval?: number;
+
+  // retry - exponential backoff
   retryMaxAttempts?: number;
-  retryInitialDelayMs?: number;
-  retryMaxDelayMs?: number;
+  retryInitialDelay?: number;
+  retryMaxDelay?: number;
   retryBackoffFactor?: number;
 }
 

@@ -29,3 +29,25 @@ export function checkIfHasMigrationIssues({
   }
   return false;
 }
+
+export function parseIntOption(value: string, defaultValue?: number): number {
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed)) {
+    if (defaultValue !== undefined) {
+      return defaultValue;
+    }
+    throw new Error(`Invalid number: ${value}`);
+  }
+  return parsed;
+}
+
+export function parseFloatOption(value: string, defaultValue?: number): number {
+  const parsed = parseFloat(value);
+  if (isNaN(parsed)) {
+    if (defaultValue !== undefined) {
+      return defaultValue;
+    }
+    throw new Error(`Invalid number: ${value}`);
+  }
+  return parsed;
+}

@@ -1,4 +1,6 @@
+/*
 import { run } from './main.js';
+
 
 import { config } from 'dotenv';
 config();
@@ -36,6 +38,7 @@ run({
   console.error('An error occurred:', error);
   process.exit(1);
 });
+*/
 
 /*
 import * as commander from 'commander';
@@ -58,3 +61,21 @@ program
 
 program.parse();
 */
+
+import { config } from 'dotenv';
+config();
+
+import * as commander from 'commander';
+
+import repoStatsCommand from './commands/repo-stats-command.js';
+
+const program = new commander.Command();
+
+program
+  .description(
+    'Fetches and processes repository statistics from GitHub organizations',
+  )
+  .version('0.1.0')
+  .addCommand(repoStatsCommand);
+
+program.parse(process.argv);

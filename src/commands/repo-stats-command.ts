@@ -1,22 +1,111 @@
 import * as commander from 'commander';
+import { parseFloatOption, parseIntOption } from '../utils.js';
+import { Arguments } from '../types.js';
 
-const command = new commander.Command();
+const repoStatsCommand = new commander.Command();
 const { Option } = commander;
 
-command
+repoStatsCommand
   .name('repo-stats')
   .description('Command to run repo-stats')
   .version('1.0.0')
   .addOption(
-    new Option('-o, --org <org>', 'The name of the organization to process'),
+    new Option(
+      '-o, --org-name <org>',
+      'The name of the organization to process',
+    ).env('ORG_NAME'),
   )
-  .action(async (options) => {
-    const { org } = options;
-    if (!org) {
+  .addOption(
+    new Option('-t, --access-token <token>', 'GitHub access token').env(
+      'ACCESS_TOKEN',
+    ),
+  )
+  .addOption(
+    new Option('-u, --base-url <url>', 'GitHub API base URL')
+      .env('BASE_URL')
+      .default('https://api.github.com'),
+  )
+  .addOption(
+    new Option('--proxy-url <url>', 'Proxy URL if required').env('PROXY_URL'),
+  )
+  .addOption(
+    new Option('-v, --verbose', 'Enable verbose logging').env('VERBOSE'),
+  )
+  .addOption(new Option('--app-id <id>', 'GitHub App ID').env('APP_ID'))
+  .addOption(
+    new Option('--private-key <key>', 'GitHub App private key').env(
+      'PRIVATE_KEY',
+    ),
+  )
+  .addOption(
+    new Option(
+      '--private-key-file <file>',
+      'Path to GitHub App private key file',
+    ).env('PRIVATE_KEY_FILE'),
+  )
+  .addOption(
+    new Option('--app-installation-id <id>', 'GitHub App installation ID').env(
+      'APP_INSTALLATION_ID',
+    ),
+  )
+  .addOption(
+    new Option('--page-size <size>', 'Number of items per page')
+      .env('PAGE_SIZE')
+      .default('5')
+      .argParser(parseIntOption),
+  )
+  .addOption(
+    new Option(
+      '--rate-limit-check-interval <seconds>',
+      'Interval for rate limit checks in seconds',
+    )
+      .env('RATE_LIMIT_CHECK_INTERVAL')
+      .default('60')
+      .argParser(parseIntOption),
+  )
+  .addOption(
+    new Option(
+      '--retry-max-attempts <attempts>',
+      'Maximum number of retry attempts',
+    )
+      .env('RETRY_MAX_ATTEMPTS')
+      .default('3')
+      .argParser(parseIntOption),
+  )
+  .addOption(
+    new Option(
+      '--retry-initial-delay <milliseconds>',
+      'Initial delay for retry in milliseconds',
+    )
+      .env('RETRY_INITIAL_DELAY')
+      .default('1000')
+      .argParser(parseIntOption),
+  )
+  .addOption(
+    new Option(
+      '--retry-max-delay <milliseconds>',
+      'Maximum delay for retry in milliseconds',
+    )
+      .env('RETRY_MAX_DELAY')
+      .default('30000')
+      .argParser(parseIntOption),
+  )
+  .addOption(
+    new Option(
+      '--retry-backoff-factor <factor>',
+      'Backoff factor for retry delays',
+    )
+      .env('RETRY_BACKOFF_FACTOR')
+      .default('2')
+      .argParser(parseFloatOption),
+  )
+  .action(async (options: Arguments) => {
+    const { orgName } = options;
+    if (!orgName) {
       console.error('Error: Organization name is required.');
       process.exit(1);
     }
-    console.log(`Running repo-stats for organization: ${org}`);
+    console.log(`Running repo-stats for organization: ${orgName}`);
   });
 
-export default command;
+export default repoStatsCommand;
