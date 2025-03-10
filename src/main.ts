@@ -258,68 +258,80 @@ async function processRepositories({
   let processedCount = 0;
   const successThreshold = opts.retrySuccessThreshold || 5;
 
-  let isComplete = false;
-  for await (const result of processRepoStats({
-    reposIterator,
-    client,
-    logger,
-    extraPageSize: opts.extraPageSize || 50,
-    processedState,
-  })) {
-    try {
-      // Skip if already processed in previous attempt
-      if (processedState.processedRepos.has(result.Repo_Name)) {
-        logger.debug(
-          `Skipping already processed repository: ${result.Repo_Name}`,
-        );
-        continue;
-      }
+  let iterationComplete = false;
 
-      await writeResultToCsv(result, fileName, logger);
-      processedState.processedRepos.add(result.Repo_Name);
-      processedState.lastProcessedRepo = result.Repo_Name;
-      processedState.lastSuccessfulCursor = processedState.cursor;
-      processedState.lastSuccessTimestamp = new Date().toISOString();
-      processedCount++;
-
-      // Track successful processing
-      successCount++;
-      if (successCount >= successThreshold && retryCount > 0) {
-        logger.info(
-          `Reset retry count after ${successCount} successful operations`,
-        );
-        retryCount = 0;
-        successCount = 0;
-      }
-
-      // Check rate limits after configured interval
-      if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
-        const rateLimitReached = await checkAndHandleRateLimits({
-          client,
-          logger,
-          processedCount,
-        });
-
-        if (rateLimitReached) {
-          throw new Error(
-            'Rate limit reached. Processing will be paused until limits reset.',
+  try {
+    for await (const result of processRepoStats({
+      reposIterator,
+      client,
+      logger,
+      extraPageSize: opts.extraPageSize || 50,
+      processedState,
+    })) {
+      try {
+        // Skip if already processed in previous attempt
+        if (processedState.processedRepos.has(result.Repo_Name)) {
+          logger.debug(
+            `Skipping already processed repository: ${result.Repo_Name}`,
           );
+          continue;
         }
+
+        await writeResultToCsv(result, fileName, logger);
+        processedState.processedRepos.add(result.Repo_Name);
+        processedState.lastProcessedRepo = result.Repo_Name;
+        processedState.lastSuccessfulCursor = processedState.cursor;
+        processedState.lastSuccessTimestamp = new Date().toISOString();
+        processedCount++;
+
+        // Track successful processing
+        successCount++;
+        if (successCount >= successThreshold && retryCount > 0) {
+          logger.info(
+            `Reset retry count after ${successCount} successful operations`,
+          );
+          retryCount = 0;
+          successCount = 0;
+        }
+
+        // Check rate limits after configured interval
+        if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
+          const rateLimitReached = await checkAndHandleRateLimits({
+            client,
+            logger,
+            processedCount,
+          });
+
+          if (rateLimitReached) {
+            throw new Error(
+              'Rate limit reached. Processing will be paused until limits reset.',
+            );
+          }
+        }
+      } catch (error) {
+        successCount = 0;
+        logger.error(`Failed processing repo ${result.Repo_Name}: ${error}`);
+        processedState.cursor = processedState.lastSuccessfulCursor;
+        throw error;
       }
-    } catch (error) {
-      successCount = 0;
-      logger.error(`Failed processing repo ${result.Repo_Name}: ${error}`);
-      processedState.cursor = processedState.lastSuccessfulCursor;
-      throw error;
     }
+
+    // If we get here, we've completed the iteration without errors
+    iterationComplete = true;
+    logger.info('Successfully completed processing all repositories');
+  } catch (error) {
+    // If there's an error during iteration, we'll handle it at the caller
+    logger.error(`Error during repository processing: ${error}`);
+    throw error;
   }
 
-  // If we've made it here without throwing an error, and we processed at least one repo,
-  // and there's no next page (cursor is null), then we're complete
-  isComplete = processedCount > 0 && !processedState.cursor;
+  // Simple completion logic: if we've successfully iterated through all repositories, we're done
+  const isComplete = iterationComplete;
 
   if (isComplete) {
-    logger.info('No more repositories to process - reached end of pagination');
+    logger.info(
+      'No more repositories to process - processing completed successfully',
+    );
   }
 
   return {
