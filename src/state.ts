@@ -114,13 +114,13 @@ export function updateState({
   // Update cursor if provided and different from current
   if (newCursor !== state.currentCursor) {
     state.currentCursor = newCursor || null;
-    logger.debug(
+    logger.warn(
       `Updated cursor to: ${state.currentCursor} for repo: ${repoName}`,
     );
   }
 
   // Update last successful cursor if provided
-  if (lastSuccessfulCursor !== undefined) {
+  if (lastSuccessfulCursor) {
     state.lastSuccessfulCursor = lastSuccessfulCursor;
   }
 

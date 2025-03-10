@@ -1,14 +1,12 @@
 import * as winston from 'winston';
 import * as path from 'path';
 import { mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
 const { combine, timestamp, printf, colorize } = winston.format;
 
 import { Logger, ProcessingSummary } from './types.js';
 
-// TODO: Figure out how to make ESLint happy with this
-// eslint-disable-next-line @typescript-eslint/restrict-template-expressions
 const format = printf(({ level, message, timestamp, owner, repo }): string => {
-  // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
   if (owner && repo) {
     return `${timestamp} ${level} [${owner}/${repo}]: ${message}`;
   } else {
@@ -20,35 +18,60 @@ const generateLoggerOptions = async (
   verbose: boolean,
   logFileName?: string,
 ): Promise<winston.LoggerOptions> => {
-  const logsDir = path.join(process.cwd(), 'logs');
-  await mkdir(logsDir, { recursive: true });
+  // Use absolute path for logs directory
+  const logsDir = path.resolve(process.cwd(), 'logs');
 
-  const defaultLogName = `repo-stats-${
-    new Date().toISOString().split('T')[0]
-  }.log`;
-  const logFile = path.join(logsDir, logFileName ?? defaultLogName);
+  try {
+    // Create logs directory if it doesn't exist
+    if (!existsSync(logsDir)) {
+      await mkdir(logsDir, { recursive: true });
+    }
 
-  return {
-    format: combine(colorize(), timestamp(), format),
-    transports: [
-      new winston.transports.Console({
-        level: verbose ? 'debug' : 'info',
-        format: combine(colorize(), timestamp(), format),
-      }),
-      new winston.transports.File({
-        filename: logFile,
-        level: verbose ? 'debug' : 'info',
-        format: combine(timestamp(), format),
-      }),
-    ],
-  };
+    const defaultLogName = `repo-stats-${
+      new Date().toISOString().split('T')[0]
+    }.log`;
+
+    const logFile = path.resolve(logsDir, logFileName ?? defaultLogName);
+
+    console.debug(`Initializing logger with file: ${logFile}`); // Debug output
+
+    const commonFormat = combine(timestamp(), format);
+
+    return {
+      level: verbose ? 'debug' : 'info',
+      format: commonFormat,
+      transports: [
+        new winston.transports.Console({
+          format: combine(colorize(), commonFormat),
+        }),
+        new winston.transports.File({
+          filename: logFile,
+          format: commonFormat,
+          options: { flags: 'a' }, // Append mode
+        }),
+      ],
+      exitOnError: false,
+    };
+  } catch (error) {
+    console.error(`Failed to setup logger: ${error}`);
+    throw error;
+  }
 };
 
 export const createLogger = async (
   verbose: boolean,
   logFileName?: string,
-): Promise<Logger> =>
-  winston.createLogger(await generateLoggerOptions(verbose, logFileName));
+): Promise<Logger> => {
+  const options = await generateLoggerOptions(verbose, logFileName);
+  const logger = winston.createLogger(options);
+
+  // Add error handler
+  logger.on('error', (error) => {
+    console.error('Logger error:', error);
+  });
+
+  return logger;
+};
 
 export const logProcessingSummary = (
   summary: ProcessingSummary,
