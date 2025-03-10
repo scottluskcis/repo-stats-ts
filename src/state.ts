@@ -59,14 +59,13 @@ function loadLastState(logger: Logger): ProcessedPageState | null {
   return null;
 }
 
-export interface StateOptions {
+export function initializeState({
+  resumeFromLastSave,
+  logger,
+}: {
   resumeFromLastSave?: boolean;
-}
-
-export function initializeState(
-  logger: Logger,
-  options: StateOptions = {},
-): { processedState: ProcessedPageState; resumeFromLastState: boolean } {
+  logger: Logger;
+}): { processedState: ProcessedPageState; resumeFromLastState: boolean } {
   let processedState: ProcessedPageState = {
     currentCursor: null,
     processedRepos: [],
@@ -88,10 +87,12 @@ export function initializeState(
       isNewRun = true;
     }
 
-    if (!isNewRun && options.resumeFromLastSave && lastState) {
+    if (!isNewRun && resumeFromLastSave && lastState) {
       processedState = lastState;
       resumeFromLastState = true;
-      logger.info(`Resuming from last state: ${JSON.stringify(lastState)}`);
+      logger.info(
+        `Resuming from last state that was last updated: ${lastState.lastUpdated}`,
+      );
     }
   }
 
@@ -112,8 +113,8 @@ export function updateState({
   logger: Logger;
 }): void {
   // Update cursor if provided and different from current
-  if (newCursor !== state.currentCursor) {
-    state.currentCursor = newCursor || null;
+  if (newCursor && newCursor !== state.currentCursor) {
+    state.currentCursor = newCursor;
     logger.warn(
       `Updated cursor to: ${state.currentCursor} for repo: ${repoName}`,
     );

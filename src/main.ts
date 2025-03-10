@@ -53,8 +53,9 @@ const _init = async (
 
   const client = new OctokitClient(octokit);
 
-  const { processedState, resumeFromLastState } = initializeState(logger, {
-    resumeFromLastSave: opts.resumeFromLastSave,
+  const { processedState, resumeFromLastState } = initializeState({
+    resumeFromLastSave: opts.resumeFromLastSave || false,
+    logger,
   });
 
   let fileName = '';
@@ -63,10 +64,12 @@ const _init = async (
     logger.info(`Resuming from last state. Using existing file: ${fileName}`);
   } else {
     fileName = generateRepoStatsFileName(opts.orgName);
+
+    initializeCsvFile(fileName, logger);
     logger.info(`Results will be saved to file: ${fileName}`);
 
     processedState.outputFileName = fileName;
-    initializeCsvFile(fileName, logger);
+    updateState({ state: processedState, logger });
   }
 
   const retryConfig: RetryConfig = {
@@ -335,7 +338,6 @@ async function* processRepoStats({
     if (repo.pageInfo?.endCursor) {
       updateState({
         state: processedState,
-        repoName: repo.name,
         newCursor: repo.pageInfo.endCursor,
         logger,
       });
