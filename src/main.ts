@@ -57,6 +57,12 @@ export async function run(opts: Arguments): Promise<void> {
   const startTime = new Date();
   logger.info(`Started processing at: ${startTime.toISOString()}`);
 
+  const fileName = generateRepoStatsFileName(opts.orgName);
+  logger.info(`Results will be saved to file: ${fileName}`);
+
+  // Initialize CSV file with headers if it doesn't exist
+  initializeCsvFile(fileName, logger);
+
   const processedState: ProcessedPageState = {
     cursor: null,
     processedRepos: new Set<string>(),
@@ -110,6 +116,49 @@ export async function run(opts: Arguments): Promise<void> {
       );
     },
   );
+}
+
+// Add new function to handle CSV file initialization
+function initializeCsvFile(fileName: string, logger: Logger): void {
+  const columns = [
+    'Org_Name',
+    'Repo_Name',
+    'Is_Empty',
+    'Last_Push',
+    'Last_Update',
+    'isFork',
+    'isArchived',
+    'Disk_Size_kb',
+    'Repo_Size_mb',
+    'Record_Count',
+    'Collaborator_Count',
+    'Protected_Branch_Count',
+    'PR_Review_Count',
+    'PR_Review_Comment_Count',
+    'Commit_Comment_Count',
+    'Milestone_Count',
+    'PR_Count',
+    'Project_Count',
+    'Branch_Count',
+    'Release_Count',
+    'Issue_Count',
+    'Issue_Event_Count',
+    'Issue_Comment_Count',
+    'Tag_Count',
+    'Discussion_Count',
+    'Has_Wiki',
+    'Full_URL',
+    'Migration_Issue',
+    'Created',
+  ];
+
+  if (!existsSync(fileName)) {
+    logger.info(`Creating new CSV file: ${fileName}`);
+    const headerRow = stringify([columns], { header: false });
+    writeFileSync(fileName, headerRow);
+  } else {
+    logger.info(`Using existing CSV file: ${fileName}`);
+  }
 }
 
 async function processRepositories({
@@ -298,8 +347,6 @@ async function writeResultToCsv(
   logger: Logger,
 ): Promise<void> {
   try {
-    const isNewFile = !existsSync(fileName);
-
     // Define columns in specific order matching mapToRepoStatsResult
     const columns = [
       'Org_Name',
@@ -332,13 +379,6 @@ async function writeResultToCsv(
       'Migration_Issue',
       'Created',
     ];
-
-    if (isNewFile) {
-      logger.info(`Creating new CSV file: ${fileName}`);
-      // Write header for new files
-      const headerRow = stringify([columns], { header: false });
-      writeFileSync(fileName, headerRow);
-    }
 
     // Always append the data row
     const csvRow = stringify([result], {
