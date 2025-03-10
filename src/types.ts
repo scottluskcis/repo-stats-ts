@@ -263,13 +263,13 @@ export interface RetryableOperation<T> {
 }
 
 export interface ProcessedPageState {
-  cursor: string | null;
-  processedRepos: string[];
+  completedSuccessfully: boolean;
+  outputFileName: string | null;
+  currentCursor: string | null;
   lastSuccessfulCursor: string | null;
   lastProcessedRepo: string | null;
   lastSuccessTimestamp: string | null;
-  completedSuccessfully: boolean;
-  outputFileName: string | null;
+  processedRepos: string[];
 }
 
 export interface RepoProcessingResult {

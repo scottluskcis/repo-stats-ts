@@ -14,7 +14,7 @@ import {
 } from './types.js';
 import { createLogger, logInitialization } from './logger.js';
 import { createAuthConfig } from './auth.js';
-import { initializeState, saveLastState } from './state.js';
+import { initializeState, saveLastState, updateState } from './state.js';
 import { stringify } from 'csv-stringify/sync';
 import { appendFileSync, existsSync, writeFileSync } from 'fs';
 import { withRetry, RetryConfig } from './retry.js';
@@ -139,7 +139,7 @@ export async function run(opts: Arguments): Promise<void> {
       successCount = 0;
       logger.warn(
         `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
-          `Current cursor: ${processedState.cursor}, ` +
+          `Current cursor: ${processedState.currentCursor}, ` +
           `Last successful cursor: ${processedState.lastSuccessfulCursor}, ` +
           `Last processed repo: ${processedState.lastProcessedRepo}, ` +
           `Processed repos count: ${processedState.processedRepos.length}, ` +
@@ -211,11 +211,13 @@ async function processRepositories({
   retryCount: number;
   fileName: string;
 }): Promise<RepoProcessingResult> {
-  logger.debug(`Starting/Resuming from cursor: ${processedState.cursor}`);
+  logger.debug(
+    `Starting/Resuming from cursor: ${processedState.currentCursor}`,
+  );
 
   // Use lastSuccessfulCursor only if cursor is null (first try)
   const startCursor =
-    processedState.cursor || processedState.lastSuccessfulCursor;
+    processedState.currentCursor || processedState.lastSuccessfulCursor;
   logger.info(`Using start cursor: ${startCursor}`);
 
   const reposIterator = client.getOrgRepoStats(
@@ -238,7 +240,6 @@ async function processRepositories({
       processedState,
     })) {
       try {
-        // Skip if already processed in previous attempt
         if (processedState.processedRepos.includes(result.Repo_Name)) {
           logger.debug(
             `Skipping already processed repository: ${result.Repo_Name}`,
@@ -247,13 +248,14 @@ async function processRepositories({
         }
 
         await writeResultToCsv(result, fileName, logger);
-        if (!processedState.processedRepos.includes(result.Repo_Name)) {
-          processedState.processedRepos.push(result.Repo_Name);
-        }
 
-        processedState.lastProcessedRepo = result.Repo_Name;
-        processedState.lastSuccessfulCursor = processedState.cursor;
-        processedState.lastSuccessTimestamp = new Date().toISOString();
+        updateState({
+          state: processedState,
+          repoName: result.Repo_Name,
+          lastSuccessfulCursor: processedState.currentCursor,
+          logger,
+        });
+
         processedCount++;
 
         // Track successful processing
@@ -283,7 +285,7 @@ async function processRepositories({
       } catch (error) {
         successCount = 0;
         logger.error(`Failed processing repo ${result.Repo_Name}: ${error}`);
-        processedState.cursor = processedState.lastSuccessfulCursor;
+        processedState.currentCursor = processedState.lastSuccessfulCursor;
         throw error;
       }
     }
@@ -330,17 +332,13 @@ async function* processRepoStats({
   processedState: ProcessedPageState;
 }): AsyncGenerator<RepoStatsResult> {
   for await (const repo of reposIterator) {
-    // Update cursor only if we have new pageInfo
     if (repo.pageInfo?.endCursor) {
-      const newCursor = repo.pageInfo.endCursor;
-      if (newCursor !== processedState.cursor) {
-        processedState.cursor = newCursor;
-        logger.warn(
-          `Updated cursor to: ${processedState.cursor} for repo: ${repo.name}`,
-        );
-        // Save state whenever cursor changes
-        saveLastState(processedState, logger);
-      }
+      updateState({
+        state: processedState,
+        repoName: repo.name,
+        newCursor: repo.pageInfo.endCursor,
+        logger,
+      });
     }
 
     // Run issue and PR analysis concurrently

@@ -35,7 +35,7 @@ export function loadLastState(logger: Logger): ProcessedPageState | null {
 
       return {
         ...parsedState,
-        cursor: parsedState.cursor || null,
+        currentCursor: parsedState.cursor || null,
         lastSuccessfulCursor: parsedState.lastSuccessfulCursor || null,
         lastProcessedRepo: parsedState.lastProcessedRepo || null,
         lastSuccessTimestamp: parsedState.lastSuccessTimestamp || null,
@@ -68,7 +68,7 @@ export function initializeState(
   options: StateOptions = {},
 ): { processedState: ProcessedPageState; resumeFromLastState: boolean } {
   let processedState: ProcessedPageState = {
-    cursor: null,
+    currentCursor: null,
     processedRepos: [],
     lastSuccessfulCursor: null,
     lastProcessedRepo: null,
@@ -96,4 +96,43 @@ export function initializeState(
   }
 
   return { processedState, resumeFromLastState };
+}
+
+export function updateState({
+  state,
+  repoName,
+  newCursor,
+  lastSuccessfulCursor,
+  logger,
+}: {
+  state: ProcessedPageState;
+  repoName: string;
+  newCursor?: string | null;
+  lastSuccessfulCursor?: string | null;
+  logger: Logger;
+}): void {
+  // Update cursor if provided and different from current
+  if (newCursor !== undefined && newCursor !== state.currentCursor) {
+    state.currentCursor = newCursor;
+    logger.debug(
+      `Updated cursor to: ${state.currentCursor} for repo: ${repoName}`,
+    );
+  }
+
+  // Update last successful cursor if provided
+  if (lastSuccessfulCursor !== undefined) {
+    state.lastSuccessfulCursor = lastSuccessfulCursor;
+  }
+
+  // Add to processed repos if not already included
+  if (!state.processedRepos.includes(repoName)) {
+    state.processedRepos.push(repoName);
+  }
+
+  // Update last processed repo and timestamp
+  state.lastProcessedRepo = repoName;
+  state.lastSuccessTimestamp = new Date().toISOString();
+
+  // Save state after updates
+  saveLastState(state, logger);
 }
