@@ -192,7 +192,6 @@ function initializeCsvFile(fileName: string, logger: Logger): void {
     'Last_Update',
     'isFork',
     'isArchived',
-    'Disk_Size_kb',
     'Repo_Size_mb',
     'Record_Count',
     'Collaborator_Count',
