@@ -269,6 +269,7 @@ export interface ProcessedPageState {
   lastProcessedRepo: string | null;
   lastSuccessTimestamp: string | null;
   completedSuccessfully: boolean;
+  outputFileName: string | null;
 }
 
 export interface RepoProcessingResult {

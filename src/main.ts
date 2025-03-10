@@ -14,8 +14,9 @@ import {
 } from './types.js';
 import { createLogger, logInitialization } from './logger.js';
 import { createAuthConfig } from './auth.js';
+import { initializeState, saveLastState } from './state.js';
 import { stringify } from 'csv-stringify/sync';
-import { appendFileSync, existsSync, writeFileSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, writeFileSync } from 'fs';
 import { withRetry, RetryConfig } from './retry.js';
 import {
   generateRepoStatsFileName,
@@ -24,13 +25,14 @@ import {
   formatElapsedTime,
 } from './utils.js';
 
-const LAST_STATE_FILE = 'last_state.json';
-
 const _init = async (
   opts: Arguments,
 ): Promise<{
   logger: Logger;
   client: OctokitClient;
+  fileName: string;
+  processedState: ProcessedPageState;
+  retryConfig: RetryConfig;
 }> => {
   const logFileName = `${opts.orgName}-repo-stats-${
     new Date().toISOString().split('T')[0]
@@ -51,102 +53,20 @@ const _init = async (
 
   const client = new OctokitClient(octokit);
 
-  return {
-    logger,
-    client,
-  };
-};
+  const { processedState, resumeFromLastState } = initializeState(logger, {
+    resumeFromLastSave: opts.resumeFromLastSave,
+  });
 
-function saveLastState(state: ProcessedPageState, logger: Logger): void {
-  try {
-    writeFileSync(LAST_STATE_FILE, JSON.stringify(state, null, 2));
-    logger.info(`Saved last state to ${LAST_STATE_FILE}`);
-  } catch (error) {
-    logger.error(`Failed to save last state: ${error}`);
-  }
-}
+  let fileName = '';
+  if (resumeFromLastState) {
+    fileName = processedState.outputFileName || '';
+    logger.info(`Resuming from last state. Using existing file: ${fileName}`);
+  } else {
+    fileName = generateRepoStatsFileName(opts.orgName);
+    logger.info(`Results will be saved to file: ${fileName}`);
 
-function loadLastState(logger: Logger): ProcessedPageState | null {
-  try {
-    if (existsSync(LAST_STATE_FILE)) {
-      const data = readFileSync(LAST_STATE_FILE, 'utf-8');
-      logger.info(`Loaded last state from ${LAST_STATE_FILE}`);
-      const parsedState = JSON.parse(data);
-
-      // Validate processedRepos exists and is an array
-      if (
-        !parsedState.processedRepos ||
-        !Array.isArray(parsedState.processedRepos)
-      ) {
-        logger.warn(
-          'Invalid state file: processedRepos is missing or not an array',
-        );
-        parsedState.processedRepos = [];
-      }
-
-      // Ensure uniqueness while keeping as array
-      parsedState.processedRepos = [...new Set(parsedState.processedRepos)];
-
-      return {
-        ...parsedState,
-        cursor: parsedState.cursor || null,
-        lastSuccessfulCursor: parsedState.lastSuccessfulCursor || null,
-        lastProcessedRepo: parsedState.lastProcessedRepo || null,
-        lastSuccessTimestamp: parsedState.lastSuccessTimestamp || null,
-        completedSuccessfully: parsedState.completedSuccessfully || false,
-      };
-    }
-  } catch (error) {
-    logger.error(
-      `Failed to load last state: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    logger.debug(
-      `State file contents: ${
-        existsSync(LAST_STATE_FILE)
-          ? readFileSync(LAST_STATE_FILE, 'utf-8')
-          : 'file not found'
-      }`,
-    );
-  }
-  return null;
-}
-
-export async function run(opts: Arguments): Promise<void> {
-  const { logger, client } = await _init(opts);
-  const startTime = new Date();
-  logger.info(`Started processing at: ${startTime.toISOString()}`);
-
-  const fileName = generateRepoStatsFileName(opts.orgName);
-  logger.info(`Results will be saved to file: ${fileName}`);
-
-  initializeCsvFile(fileName, logger);
-
-  let processedState: ProcessedPageState = {
-    cursor: null,
-    processedRepos: [],
-    lastSuccessfulCursor: null,
-    lastProcessedRepo: null,
-    lastSuccessTimestamp: null,
-    completedSuccessfully: false,
-  };
-
-  // Check if we have a completed state
-  if (existsSync(LAST_STATE_FILE)) {
-    const lastState = loadLastState(logger);
-    if (lastState?.completedSuccessfully) {
-      logger.info(
-        'All repositories were previously processed successfully. Nothing to resume.',
-      );
-      return;
-    }
-
-    // Only load last state if we're resuming and there's incomplete work
-    if (opts.resumeFromLastSave && lastState) {
-      processedState = lastState;
-      logger.info(`Resuming from last state: ${JSON.stringify(lastState)}`);
-    }
+    processedState.outputFileName = fileName;
+    initializeCsvFile(fileName, logger);
   }
 
   const retryConfig: RetryConfig = {
@@ -156,6 +76,22 @@ export async function run(opts: Arguments): Promise<void> {
     backoffFactor: opts.retryBackoffFactor || 2,
     successThreshold: opts.retrySuccessThreshold || 5,
   };
+
+  return {
+    logger,
+    client,
+    fileName,
+    processedState,
+    retryConfig,
+  };
+};
+
+export async function run(opts: Arguments): Promise<void> {
+  const { logger, client, fileName, processedState, retryConfig } = await _init(
+    opts,
+  );
+  const startTime = new Date();
+  logger.info(`Started processing at: ${startTime.toISOString()}`);
 
   let successCount = 0;
   let retryCount = 0;
@@ -175,7 +111,6 @@ export async function run(opts: Arguments): Promise<void> {
       const endTime = new Date();
       const elapsedTime = formatElapsedTime(startTime, endTime);
 
-      // Mark as completed if all processing was successful
       if (result.isComplete) {
         processedState.completedSuccessfully = true;
         logger.info(
@@ -400,9 +335,11 @@ async function* processRepoStats({
       const newCursor = repo.pageInfo.endCursor;
       if (newCursor !== processedState.cursor) {
         processedState.cursor = newCursor;
-        logger.debug(
+        logger.warn(
           `Updated cursor to: ${processedState.cursor} for repo: ${repo.name}`,
         );
+        // Save state whenever cursor changes
+        saveLastState(processedState, logger);
       }
     }
 
