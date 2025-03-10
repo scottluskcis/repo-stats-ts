@@ -14,7 +14,7 @@ import {
 } from './types.js';
 import { createLogger, logInitialization } from './logger.js';
 import { createAuthConfig } from './auth.js';
-import { initializeState, saveLastState, updateState } from './state.js';
+import { initializeState, updateState } from './state.js';
 import { stringify } from 'csv-stringify/sync';
 import { appendFileSync, existsSync, writeFileSync } from 'fs';
 import { withRetry, RetryConfig } from './retry.js';
@@ -130,7 +130,7 @@ export async function run(opts: Arguments): Promise<void> {
           `Processing completed successfully: ${processedState.completedSuccessfully}`,
       );
 
-      saveLastState(processedState, logger);
+      updateState({ state: processedState, logger });
       return result;
     },
     retryConfig,
@@ -148,7 +148,7 @@ export async function run(opts: Arguments): Promise<void> {
           `Error: ${state.error?.message}\n` +
           `Elapsed time so far: ${formatElapsedTime(startTime, new Date())}`,
       );
-      saveLastState(processedState, logger);
+      updateState({ state: processedState, logger });
     },
   );
 }

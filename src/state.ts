@@ -1,9 +1,9 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { Logger, ProcessedPageState } from './types.js';
 
-const LAST_STATE_FILE = 'last_state.json';
+const LAST_STATE_FILE = 'last_known_state.json';
 
-export function saveLastState(state: ProcessedPageState, logger: Logger): void {
+function saveLastState(state: ProcessedPageState, logger: Logger): void {
   try {
     writeFileSync(LAST_STATE_FILE, JSON.stringify(state, null, 2));
     logger.info(`Saved last state to ${LAST_STATE_FILE}`);
@@ -12,7 +12,7 @@ export function saveLastState(state: ProcessedPageState, logger: Logger): void {
   }
 }
 
-export function loadLastState(logger: Logger): ProcessedPageState | null {
+function loadLastState(logger: Logger): ProcessedPageState | null {
   try {
     if (existsSync(LAST_STATE_FILE)) {
       const data = readFileSync(LAST_STATE_FILE, 'utf-8');
@@ -38,7 +38,7 @@ export function loadLastState(logger: Logger): ProcessedPageState | null {
         currentCursor: parsedState.cursor || null,
         lastSuccessfulCursor: parsedState.lastSuccessfulCursor || null,
         lastProcessedRepo: parsedState.lastProcessedRepo || null,
-        lastSuccessTimestamp: parsedState.lastSuccessTimestamp || null,
+        lastUpdated: parsedState.lastSuccessTimestamp || null,
         completedSuccessfully: parsedState.completedSuccessfully || false,
       };
     }
@@ -72,7 +72,7 @@ export function initializeState(
     processedRepos: [],
     lastSuccessfulCursor: null,
     lastProcessedRepo: null,
-    lastSuccessTimestamp: null,
+    lastUpdated: null,
     completedSuccessfully: false,
     outputFileName: null,
   };
@@ -106,14 +106,14 @@ export function updateState({
   logger,
 }: {
   state: ProcessedPageState;
-  repoName: string;
+  repoName?: string | null;
   newCursor?: string | null;
   lastSuccessfulCursor?: string | null;
   logger: Logger;
 }): void {
   // Update cursor if provided and different from current
-  if (newCursor !== undefined && newCursor !== state.currentCursor) {
-    state.currentCursor = newCursor;
+  if (newCursor !== state.currentCursor) {
+    state.currentCursor = newCursor || null;
     logger.debug(
       `Updated cursor to: ${state.currentCursor} for repo: ${repoName}`,
     );
@@ -125,13 +125,15 @@ export function updateState({
   }
 
   // Add to processed repos if not already included
-  if (!state.processedRepos.includes(repoName)) {
+  if (repoName && !state.processedRepos.includes(repoName)) {
     state.processedRepos.push(repoName);
   }
 
   // Update last processed repo and timestamp
-  state.lastProcessedRepo = repoName;
-  state.lastSuccessTimestamp = new Date().toISOString();
+  if (repoName) {
+    state.lastProcessedRepo = repoName;
+  }
+  state.lastUpdated = new Date().toISOString();
 
   // Save state after updates
   saveLastState(state, logger);

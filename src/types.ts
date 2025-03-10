@@ -268,7 +268,7 @@ export interface ProcessedPageState {
   currentCursor: string | null;
   lastSuccessfulCursor: string | null;
   lastProcessedRepo: string | null;
-  lastSuccessTimestamp: string | null;
+  lastUpdated: string | null;
   processedRepos: string[];
 }
 
