@@ -1,4 +1,6 @@
 import * as winston from 'winston';
+import * as path from 'path';
+import { mkdir } from 'fs/promises';
 const { combine, timestamp, printf, colorize } = winston.format;
 
 import { Logger, ProcessingSummary } from './types.js';
@@ -14,17 +16,39 @@ const format = printf(({ level, message, timestamp, owner, repo }): string => {
   }
 });
 
-const generateLoggerOptions = (verbose: boolean): winston.LoggerOptions => {
+const generateLoggerOptions = async (
+  verbose: boolean,
+  logFileName?: string,
+): Promise<winston.LoggerOptions> => {
+  const logsDir = path.join(process.cwd(), 'logs');
+  await mkdir(logsDir, { recursive: true });
+
+  const defaultLogName = `repo-stats-${
+    new Date().toISOString().split('T')[0]
+  }.log`;
+  const logFile = path.join(logsDir, logFileName ?? defaultLogName);
+
   return {
     format: combine(colorize(), timestamp(), format),
     transports: [
-      new winston.transports.Console({ level: verbose ? 'debug' : 'info' }),
+      new winston.transports.Console({
+        level: verbose ? 'debug' : 'info',
+        format: combine(colorize(), timestamp(), format),
+      }),
+      new winston.transports.File({
+        filename: logFile,
+        level: verbose ? 'debug' : 'info',
+        format: combine(timestamp(), format),
+      }),
     ],
   };
 };
 
-export const createLogger = (verbose: boolean): Logger =>
-  winston.createLogger(generateLoggerOptions(verbose));
+export const createLogger = async (
+  verbose: boolean,
+  logFileName?: string,
+): Promise<Logger> =>
+  winston.createLogger(await generateLoggerOptions(verbose, logFileName));
 
 export const logProcessingSummary = (
   summary: ProcessingSummary,

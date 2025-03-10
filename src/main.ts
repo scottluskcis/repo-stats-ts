@@ -32,7 +32,10 @@ const _init = async (
   logger: Logger;
   client: OctokitClient;
 }> => {
-  const logger = createLogger(opts.verbose);
+  const logFileName = `${opts.orgName}-repo-stats-${
+    new Date().toISOString().split('T')[0]
+  }.log`;
+  const logger = await createLogger(opts.verbose, logFileName);
   logInitialization.start(logger);
 
   logInitialization.auth(logger);
