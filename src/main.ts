@@ -15,7 +15,7 @@ import {
 import { createLogger, logInitialization } from './logger.js';
 import { createAuthConfig } from './auth.js';
 import { stringify } from 'csv-stringify/sync';
-import { appendFileSync, existsSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, writeFileSync, readFileSync } from 'fs';
 import { withRetry, RetryConfig } from './retry.js';
 import {
   generateRepoStatsFileName,
@@ -23,6 +23,8 @@ import {
   checkIfHasMigrationIssues,
   formatElapsedTime,
 } from './utils.js';
+
+const LAST_STATE_FILE = 'last_state.json';
 
 const _init = async (
   opts: Arguments,
@@ -52,6 +54,28 @@ const _init = async (
   };
 };
 
+function saveLastState(state: ProcessedPageState, logger: Logger): void {
+  try {
+    writeFileSync(LAST_STATE_FILE, JSON.stringify(state, null, 2));
+    logger.info(`Saved last state to ${LAST_STATE_FILE}`);
+  } catch (error) {
+    logger.error(`Failed to save last state: ${error}`);
+  }
+}
+
+function loadLastState(logger: Logger): ProcessedPageState | null {
+  try {
+    if (existsSync(LAST_STATE_FILE)) {
+      const data = readFileSync(LAST_STATE_FILE, 'utf-8');
+      logger.info(`Loaded last state from ${LAST_STATE_FILE}`);
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    logger.error(`Failed to load last state: ${error}`);
+  }
+  return null;
+}
+
 export async function run(opts: Arguments): Promise<void> {
   const { logger, client } = await _init(opts);
   const startTime = new Date();
@@ -62,12 +86,31 @@ export async function run(opts: Arguments): Promise<void> {
 
   initializeCsvFile(fileName, logger);
 
-  const processedState: ProcessedPageState = {
+  let processedState: ProcessedPageState = {
     cursor: null,
     processedRepos: new Set<string>(),
     lastSuccessfulCursor: null,
     lastProcessedRepo: null,
+    lastSuccessTimestamp: null,
+    completedSuccessfully: false,
   };
+
+  // Check if we have a completed state
+  if (existsSync(LAST_STATE_FILE)) {
+    const lastState = loadLastState(logger);
+    if (lastState?.completedSuccessfully) {
+      logger.info(
+        'All repositories were previously processed successfully. Nothing to resume.',
+      );
+      return;
+    }
+
+    // Only load last state if we're resuming and there's incomplete work
+    if (opts.resumeFromLastSave && lastState) {
+      processedState = lastState;
+      logger.info(`Resuming from last state: ${JSON.stringify(lastState)}`);
+    }
+  }
 
   const retryConfig: RetryConfig = {
     maxAttempts: opts.retryMaxAttempts || 3,
@@ -94,6 +137,14 @@ export async function run(opts: Arguments): Promise<void> {
       const endTime = new Date();
       const elapsedTime = formatElapsedTime(startTime, endTime);
 
+      // Mark as completed if all processing was successful
+      if (result.isComplete) {
+        processedState.completedSuccessfully = true;
+        logger.info(
+          'All repositories have been processed successfully. Marking state as complete.',
+        );
+      }
+
       logger.info(
         `Completed processing ${result.processedCount} repositories. ` +
           `Last cursor: ${result.cursor}, ` +
@@ -102,8 +153,11 @@ export async function run(opts: Arguments): Promise<void> {
           `End time: ${endTime.toISOString()}\n` +
           `Total elapsed time: ${elapsedTime}\n` +
           `Consecutive successful operations: ${result.successCount}\n` +
-          `Total retry attempts: ${result.retryCount}`,
+          `Total retry attempts: ${result.retryCount}\n` +
+          `Processing completed successfully: ${processedState.completedSuccessfully}`,
       );
+
+      saveLastState(processedState, logger);
       return result;
     },
     retryConfig,
@@ -121,6 +175,7 @@ export async function run(opts: Arguments): Promise<void> {
           `Error: ${state.error?.message}\n` +
           `Elapsed time so far: ${formatElapsedTime(startTime, new Date())}`,
       );
+      saveLastState(processedState, logger);
     },
   );
 }
@@ -201,6 +256,7 @@ async function processRepositories({
   let processedCount = 0;
   const successThreshold = opts.retrySuccessThreshold || 5;
 
+  let isComplete = false;
   for await (const result of processRepoStats({
     reposIterator,
     client,
@@ -221,6 +277,7 @@ async function processRepositories({
       processedState.processedRepos.add(result.Repo_Name);
       processedState.lastProcessedRepo = result.Repo_Name;
       processedState.lastSuccessfulCursor = processedState.cursor;
+      processedState.lastSuccessTimestamp = new Date().toISOString();
       processedCount++;
 
       // Track successful processing
@@ -255,11 +312,19 @@ async function processRepositories({
     }
   }
 
+  // If we've made it here without throwing an error, and we processed at least one repo,
+  // and there's no next page (cursor is null), then we're complete
+  isComplete = processedCount > 0 && !processedState.cursor;
+
+  if (isComplete) {
+    logger.info('No more repositories to process - reached end of pagination');
+  }
+
   return {
     cursor: processedState.lastSuccessfulCursor,
     processedRepos: processedState.processedRepos,
     processedCount,
-    isComplete: true,
+    isComplete,
     successCount,
     retryCount,
   };

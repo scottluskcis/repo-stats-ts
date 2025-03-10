@@ -117,6 +117,12 @@ repoStatsCommand
       .default('5')
       .argParser(parseIntOption),
   )
+  .addOption(
+    new Option(
+      '--resume-from-last-save',
+      'Resume from the last saved state',
+    ).env('RESUME_FROM_LAST_SAVE'),
+  )
   .action(async (options: Arguments) => {
     console.log('Version:', VERSION);
 

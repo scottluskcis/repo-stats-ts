@@ -36,6 +36,8 @@ export interface Arguments {
   retryMaxDelay?: number;
   retryBackoffFactor?: number;
   retrySuccessThreshold?: number;
+
+  resumeFromLastSave?: boolean;
 }
 
 export type AuthResponse = {
@@ -265,6 +267,8 @@ export interface ProcessedPageState {
   processedRepos: Set<string>;
   lastSuccessfulCursor: string | null;
   lastProcessedRepo: string | null;
+  lastSuccessTimestamp: string | null;
+  completedSuccessfully: boolean;
 }
 
 export interface RepoProcessingResult {
