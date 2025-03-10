@@ -75,9 +75,8 @@ export async function run(opts: Arguments): Promise<void> {
     initialDelayMs: opts.retryInitialDelay || 1000,
     maxDelayMs: opts.retryMaxDelay || 30000,
     backoffFactor: opts.retryBackoffFactor || 2,
+    successThreshold: opts.retrySuccessThreshold || 5,
   };
-
-  let retryCount = 0;
 
   await withRetry(
     async () => {
@@ -97,20 +96,20 @@ export async function run(opts: Arguments): Promise<void> {
           `Last repo: ${processedState.lastProcessedRepo}\n` +
           `Start time: ${startTime.toISOString()}\n` +
           `End time: ${endTime.toISOString()}\n` +
-          `Total elapsed time: ${elapsedTime}\n` +
-          `Total retry attempts: ${retryCount}`,
+          `Total elapsed time: ${elapsedTime}`,
       );
       return result;
     },
     retryConfig,
     (state) => {
-      retryCount++;
       logger.warn(
         `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
           `Current cursor: ${processedState.cursor}, ` +
           `Last successful cursor: ${processedState.lastSuccessfulCursor}, ` +
           `Last processed repo: ${processedState.lastProcessedRepo}, ` +
           `Processed repos count: ${processedState.processedRepos.size}, ` +
+          `Total retries: ${state.retryCount}, ` +
+          `Consecutive successes: ${state.successCount}, ` +
           `Error: ${state.error?.message}\n` +
           `Elapsed time so far: ${formatElapsedTime(startTime, new Date())}`,
       );

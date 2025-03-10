@@ -35,6 +35,7 @@ export interface Arguments {
   retryInitialDelay?: number;
   retryMaxDelay?: number;
   retryBackoffFactor?: number;
+  retrySuccessThreshold?: number;
 }
 
 export type AuthResponse = {
@@ -246,8 +247,17 @@ export interface RateLimitResult {
 
 export interface RetryState {
   attempt: number;
-  lastCursor?: string | null;
+  successCount: number;
+  retryCount: number;
+  lastProcessedRepo?: string | null;
   error?: Error;
+}
+
+export interface RetryableOperation<T> {
+  execute: () => Promise<T>;
+  onRetry?: (state: RetryState) => void;
+  onSuccess?: (result: T) => void;
+  shouldRetry?: (error: Error) => boolean;
 }
 
 export interface ProcessedPageState {

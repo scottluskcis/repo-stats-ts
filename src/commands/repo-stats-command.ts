@@ -108,6 +108,15 @@ repoStatsCommand
       .default('2')
       .argParser(parseFloatOption),
   )
+  .addOption(
+    new Option(
+      '--retry-success-threshold <count>',
+      'Number of successful operations before resetting retry count',
+    )
+      .env('RETRY_SUCCESS_THRESHOLD')
+      .default('5')
+      .argParser(parseIntOption),
+  )
   .action(async (options: Arguments) => {
     console.log('Version:', VERSION);
 
