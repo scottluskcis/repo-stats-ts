@@ -125,10 +125,15 @@ async function processRepositories({
 }): Promise<RepoProcessingResult> {
   logger.debug(`Starting/Resuming from cursor: ${processedState.cursor}`);
 
+  // Use lastSuccessfulCursor only if cursor is null (first try)
+  const startCursor =
+    processedState.cursor || processedState.lastSuccessfulCursor;
+  logger.info(`Using start cursor: ${startCursor}`);
+
   const reposIterator = client.getOrgRepoStats(
     opts.orgName,
     opts.pageSize || 10,
-    processedState.cursor || processedState.lastSuccessfulCursor,
+    startCursor,
   );
 
   const fileName = generateRepoStatsFileName(opts.orgName);
@@ -174,7 +179,6 @@ async function processRepositories({
       }
     } catch (error) {
       logger.error(`Failed processing repo ${result.Repo_Name}: ${error}`);
-      // On error, restore cursor to last successful position
       processedState.cursor = processedState.lastSuccessfulCursor;
       throw error;
     }
@@ -202,10 +206,15 @@ async function* processRepoStats({
   processedState: ProcessedPageState;
 }): AsyncGenerator<RepoStatsResult> {
   for await (const repo of reposIterator) {
-    // Update cursor from repo's pageInfo
+    // Update cursor only if we have new pageInfo
     if (repo.pageInfo?.endCursor) {
-      processedState.cursor = repo.pageInfo.endCursor;
-      logger.debug(`Updated cursor to: ${processedState.cursor}`);
+      const newCursor = repo.pageInfo.endCursor;
+      if (newCursor !== processedState.cursor) {
+        processedState.cursor = newCursor;
+        logger.debug(
+          `Updated cursor to: ${processedState.cursor} for repo: ${repo.name}`,
+        );
+      }
     }
 
     // Run issue and PR analysis concurrently

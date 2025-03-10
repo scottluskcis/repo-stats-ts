@@ -63,6 +63,7 @@ export class OctokitClient {
             pageInfo {
               endCursor
               hasNextPage
+              startCursor
             }
             nodes {
               branches: refs(refPrefix:"refs/heads/") {
@@ -164,8 +165,10 @@ export class OctokitClient {
 
     for await (const response of iterator) {
       const repos = response.organization.repositories.nodes;
+      const pageInfo = response.organization.repositories.pageInfo;
+
       for (const repo of repos) {
-        yield repo;
+        yield { ...repo, pageInfo };
       }
     }
   }
