@@ -264,7 +264,7 @@ export interface RetryableOperation<T> {
 
 export interface ProcessedPageState {
   cursor: string | null;
-  processedRepos: Set<string>;
+  processedRepos: string[];
   lastSuccessfulCursor: string | null;
   lastProcessedRepo: string | null;
   lastSuccessTimestamp: string | null;
@@ -273,7 +273,7 @@ export interface ProcessedPageState {
 
 export interface RepoProcessingResult {
   cursor: string | null;
-  processedRepos: Set<string>;
+  processedRepos: string[];
   processedCount: number;
   isComplete: boolean;
   successCount: number;

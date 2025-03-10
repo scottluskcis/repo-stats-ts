@@ -71,10 +71,44 @@ function loadLastState(logger: Logger): ProcessedPageState | null {
     if (existsSync(LAST_STATE_FILE)) {
       const data = readFileSync(LAST_STATE_FILE, 'utf-8');
       logger.info(`Loaded last state from ${LAST_STATE_FILE}`);
-      return JSON.parse(data);
+      const parsedState = JSON.parse(data);
+
+      // Validate processedRepos exists and is an array
+      if (
+        !parsedState.processedRepos ||
+        !Array.isArray(parsedState.processedRepos)
+      ) {
+        logger.warn(
+          'Invalid state file: processedRepos is missing or not an array',
+        );
+        parsedState.processedRepos = [];
+      }
+
+      // Ensure uniqueness while keeping as array
+      parsedState.processedRepos = [...new Set(parsedState.processedRepos)];
+
+      return {
+        ...parsedState,
+        cursor: parsedState.cursor || null,
+        lastSuccessfulCursor: parsedState.lastSuccessfulCursor || null,
+        lastProcessedRepo: parsedState.lastProcessedRepo || null,
+        lastSuccessTimestamp: parsedState.lastSuccessTimestamp || null,
+        completedSuccessfully: parsedState.completedSuccessfully || false,
+      };
     }
   } catch (error) {
-    logger.error(`Failed to load last state: ${error}`);
+    logger.error(
+      `Failed to load last state: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    logger.debug(
+      `State file contents: ${
+        existsSync(LAST_STATE_FILE)
+          ? readFileSync(LAST_STATE_FILE, 'utf-8')
+          : 'file not found'
+      }`,
+    );
   }
   return null;
 }
@@ -91,7 +125,7 @@ export async function run(opts: Arguments): Promise<void> {
 
   let processedState: ProcessedPageState = {
     cursor: null,
-    processedRepos: new Set<string>(),
+    processedRepos: [],
     lastSuccessfulCursor: null,
     lastProcessedRepo: null,
     lastSuccessTimestamp: null,
@@ -173,7 +207,7 @@ export async function run(opts: Arguments): Promise<void> {
           `Current cursor: ${processedState.cursor}, ` +
           `Last successful cursor: ${processedState.lastSuccessfulCursor}, ` +
           `Last processed repo: ${processedState.lastProcessedRepo}, ` +
-          `Processed repos count: ${processedState.processedRepos.size}, ` +
+          `Processed repos count: ${processedState.processedRepos.length}, ` +
           `Total retries: ${state.retryCount}, ` +
           `Consecutive successes: ${state.successCount}, ` +
           `Error: ${state.error?.message}\n` +
@@ -270,7 +304,7 @@ async function processRepositories({
     })) {
       try {
         // Skip if already processed in previous attempt
-        if (processedState.processedRepos.has(result.Repo_Name)) {
+        if (processedState.processedRepos.includes(result.Repo_Name)) {
           logger.debug(
             `Skipping already processed repository: ${result.Repo_Name}`,
           );
@@ -278,7 +312,10 @@ async function processRepositories({
         }
 
         await writeResultToCsv(result, fileName, logger);
-        processedState.processedRepos.add(result.Repo_Name);
+        if (!processedState.processedRepos.includes(result.Repo_Name)) {
+          processedState.processedRepos.push(result.Repo_Name);
+        }
+
         processedState.lastProcessedRepo = result.Repo_Name;
         processedState.lastSuccessfulCursor = processedState.cursor;
         processedState.lastSuccessTimestamp = new Date().toISOString();
