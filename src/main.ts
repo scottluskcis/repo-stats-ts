@@ -135,6 +135,7 @@ export async function run(opts: Arguments): Promise<void> {
         processedState,
         successCount,
         retryCount,
+        fileName,
       });
 
       const endTime = new Date();
@@ -231,6 +232,7 @@ async function processRepositories({
   processedState,
   successCount,
   retryCount,
+  fileName,
 }: {
   client: OctokitClient;
   logger: Logger;
@@ -238,6 +240,7 @@ async function processRepositories({
   processedState: ProcessedPageState;
   successCount: number;
   retryCount: number;
+  fileName: string;
 }): Promise<RepoProcessingResult> {
   logger.debug(`Starting/Resuming from cursor: ${processedState.cursor}`);
 
@@ -251,9 +254,6 @@ async function processRepositories({
     opts.pageSize || 10,
     startCursor,
   );
-
-  const fileName = generateRepoStatsFileName(opts.orgName);
-  logger.info(`Results will be saved to file: ${fileName}`);
 
   let processedCount = 0;
   const successThreshold = opts.retrySuccessThreshold || 5;
