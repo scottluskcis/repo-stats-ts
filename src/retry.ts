@@ -23,7 +23,14 @@ export async function withRetry<T>(
     try {
       return await operation();
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      lastError =
+        error instanceof Error
+          ? error
+          : error === null || error === undefined
+          ? new Error('Unknown error occurred')
+          : new Error(
+              typeof error === 'object' ? JSON.stringify(error) : String(error),
+            );
 
       if (attempt === config.maxAttempts) {
         break;
@@ -42,7 +49,9 @@ export async function withRetry<T>(
   }
 
   throw new Error(
-    `Operation failed after ${config.maxAttempts} attempts: ${lastError?.message}`,
+    `Operation failed after ${config.maxAttempts} attempts: ${
+      lastError?.message || 'No error message available'
+    }${lastError?.stack ? `\nStack trace: ${lastError.stack}` : ''}`,
   );
 }
 
