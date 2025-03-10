@@ -272,4 +272,6 @@ export interface RepoProcessingResult {
   processedRepos: Set<string>;
   processedCount: number;
   isComplete: boolean;
+  successCount: number;
+  retryCount: number;
 }
