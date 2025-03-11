@@ -492,14 +492,9 @@ function mapToRepoStatsResult(
     totalRecordCount,
   });
 
-  // For debugging the release count discrepancy
-  console.log(
-    `Repository ${repo.name} has ${repo.releases.totalCount} releases.`,
-  );
-
   return {
-    Org_Name: repo.owner.login,
-    Repo_Name: repo.name,
+    Org_Name: repo.owner.login.toLowerCase(),
+    Repo_Name: repo.name.toLowerCase(),
     Is_Empty: repo.isEmpty,
     Last_Push: repo.pushedAt,
     Last_Update: repo.updatedAt,
@@ -535,7 +530,7 @@ function calculateRecordCount(
   issueStats: IssueStatsResult,
   prStats: PullRequestStatsResult,
 ): number {
-  // Following exactly how the bash script calculates the record count
+  // Match exactly how the bash script calculates record count (line 918)
   return (
     repo.collaborators.totalCount +
     repo.branchProtectionRules.totalCount +
@@ -671,23 +666,21 @@ async function analyzePullRequests({
     const reviewCount = pr.reviews.totalCount;
     const commitCount = pr.commits.totalCount;
 
-    // Check for potential issues with event counts
+    // This matches how the bash script handles event counts
+    // It subtracts comments from timeline events, and handles commit limits
     const redundantEventCount =
       commentCount + (commitCount > 250 ? 250 : commitCount);
 
-    // Calculate the adjusted event count
     const adjustedEventCount = Math.max(0, eventCount - redundantEventCount);
 
     issueEventCount += adjustedEventCount;
     issueCommentCount += commentCount;
     prReviewCount += reviewCount;
 
-    // Count review comments correctly - check each review node
-    let reviewCommentCount = 0;
+    // Count review comments by examining each review
     for (const review of pr.reviews.nodes) {
-      reviewCommentCount += review.comments.totalCount;
+      prReviewCommentCount += review.comments.totalCount;
     }
-    prReviewCommentCount += reviewCommentCount;
 
     commitCommentCount += commitCount;
   }
@@ -697,7 +690,6 @@ async function analyzePullRequests({
     pullRequests.pageInfo.hasNextPage &&
     pullRequests.pageInfo.endCursor != null
   ) {
-    // Processing additional pages...
     const cursor = pullRequests.pageInfo.endCursor;
     logger.debug(
       `Fetching additional pull requests for ${repo} starting from cursor ${cursor}`,
@@ -717,19 +709,16 @@ async function analyzePullRequests({
       const redundantEventCount =
         commentCount + (commitCount > 250 ? 250 : commitCount);
 
-      // Calculate the adjusted event count
       const adjustedEventCount = Math.max(0, eventCount - redundantEventCount);
 
       issueEventCount += adjustedEventCount;
       issueCommentCount += commentCount;
       prReviewCount += reviewCount;
 
-      // Count review comments correctly for additional pages
-      let reviewCommentCount = 0;
+      // Process review comments for additional pages
       for (const review of pr.reviews.nodes) {
-        reviewCommentCount += review.comments.totalCount;
+        prReviewCommentCount += review.comments.totalCount;
       }
-      prReviewCommentCount += reviewCommentCount;
 
       commitCommentCount += commitCount;
     }
