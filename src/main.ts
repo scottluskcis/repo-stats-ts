@@ -529,24 +529,36 @@ function calculateRecordCount(
   issueStats: IssueStatsResult,
   prStats: PullRequestStatsResult,
 ): number {
+  // Include all direct repository counts
   const counts = [
+    // Basic repo entity counts
     repo.collaborators.totalCount,
     repo.branchProtectionRules.totalCount,
     repo.pullRequests.totalCount,
     repo.milestones.totalCount,
+    repo.projects.totalCount,
+    repo.releases.totalCount,
+    repo.branches.totalCount,
+    repo.tags.totalCount,
+    repo.discussions.totalCount,
+    repo.commitComments.totalCount,
+
+    // Issue-related counts
     issueStats.totalIssuesCount,
+
+    // PR-related counts
     prStats.prReviewCount,
     prStats.prReviewCommentCount,
-    prStats.commitCommentCount,
+
+    // Comment and event counts from both issues and PRs
     issueStats.issueCommentCount,
     issueStats.issueEventCount,
-    prStats.issueEventCount,
     prStats.issueCommentCount,
-    repo.releases.totalCount,
-    repo.projects.totalCount,
+    prStats.issueEventCount,
   ];
 
-  const allRecordCount = counts.reduce((sum, count) => sum + count, 0);
+  // Calculate total and ensure it matches the bash script logic
+  const allRecordCount = counts.reduce((sum, count) => sum + (count || 0), 0);
   return allRecordCount;
 }
 
