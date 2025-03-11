@@ -581,24 +581,22 @@ async function analyzeIssues({
 
   const totalIssuesCount = issues.totalCount;
 
-  // Initialize counts from first page of results
-  const initialCounts = issues.nodes.reduce(
-    (acc, issue) => ({
-      comments: acc.comments + issue.comments.totalCount,
-      timeline: acc.timeline + issue.timeline.totalCount,
-    }),
-    { comments: 0, timeline: 0 },
-  );
+  // Initialize counts
+  let issueEventCount = 0;
+  let issueCommentCount = 0;
 
-  let issueCommentCount = initialCounts.comments;
-  let issueEventCount = initialCounts.timeline - initialCounts.comments;
+  // Process first page of results
+  for (const issue of issues.nodes) {
+    const eventCount = issue.timeline.totalCount;
+    const commentCount = issue.comments.totalCount;
+
+    // Calculate non-comment events by subtracting comments from total timeline events
+    issueEventCount += eventCount - commentCount;
+    issueCommentCount += commentCount;
+  }
 
   // Process additional pages if they exist
-  if (
-    issues.totalCount > 0 &&
-    issues.pageInfo.hasNextPage &&
-    issues.pageInfo.endCursor != null
-  ) {
+  if (issues.pageInfo.hasNextPage && issues.pageInfo.endCursor != null) {
     logger.debug(`More pages of issues found for repository: ${repo}`);
     const cursor = issues.pageInfo.endCursor;
 
@@ -609,9 +607,12 @@ async function analyzeIssues({
         per_page,
         cursor,
       )) {
-        issueEventCount +=
-          issue.timeline.totalCount - issue.comments.totalCount;
-        issueCommentCount += issue.comments.totalCount;
+        const eventCount = issue.timeline.totalCount;
+        const commentCount = issue.comments.totalCount;
+
+        // Calculate non-comment events for each additional issue
+        issueEventCount += eventCount - commentCount;
+        issueCommentCount += commentCount;
       }
     } catch (error) {
       logger.error(
