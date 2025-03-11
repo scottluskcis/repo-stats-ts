@@ -199,13 +199,15 @@ export class OctokitClient {
         }
       }`;
 
-    const iterator =
-      await this.octokit.graphql.paginate.iterator<IssuesResponse>(query, {
+    const iterator = this.octokit.graphql.paginate.iterator<IssuesResponse>(
+      query,
+      {
         owner,
         repo,
         pageSize: per_page,
         cursor,
-      });
+      },
+    );
 
     for await (const response of iterator) {
       const issues = response.repository.issues.nodes;
