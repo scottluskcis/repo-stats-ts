@@ -1,11 +1,13 @@
-# repo-stats-queue
+# repo-stats-ts
 
-## Purpose
+## Overview
 
-To utilize gh-repo-stats for large orgs with several repos
+This repository is a port of [gh-repo-stats](https://github.com/mona-actions/gh-repo-stats) over to TypeScript. This port also includes some additional features that did not exist in the original at the time of creating this version. Review the [features](#features) below as well as the [usage](#usage).
+
+## Features
+
+a
 
 ## Usage
 
-1. Make a copy of `.env.example` and name it to be `.env`
-2. Update any values to match your setup
-3. ...
+a
