@@ -433,7 +433,6 @@ async function writeResultToCsv(
       'Last_Update',
       'isFork',
       'isArchived',
-      'Disk_Size_kb',
       'Repo_Size_mb',
       'Record_Count',
       'Collaborator_Count',
@@ -457,8 +456,17 @@ async function writeResultToCsv(
       'Created',
     ];
 
-    // Always append the data row
-    const csvRow = stringify([result], {
+    const formattedResult = {
+      ...result,
+      Is_Empty: result.Is_Empty?.toString().toUpperCase() || 'FALSE',
+      isFork: result.isFork?.toString().toUpperCase() || 'FALSE',
+      isArchived: result.isArchived?.toString().toUpperCase() || 'FALSE',
+      Has_Wiki: result.Has_Wiki?.toString().toUpperCase() || 'FALSE',
+      Migration_Issue:
+        result.Migration_Issue?.toString().toUpperCase() || 'FALSE',
+    };
+
+    const csvRow = stringify([formattedResult], {
       header: false,
       columns: columns,
     });
@@ -497,12 +505,11 @@ function mapToRepoStatsResult(
     Last_Update: repo.updatedAt,
     isFork: repo.isFork,
     isArchived: repo.isArchived,
-    Disk_Size_kb: repo.diskUsage,
     Repo_Size_mb: repoSizeMb,
     Record_Count: totalRecordCount,
     Collaborator_Count: repo.collaborators.totalCount,
     Protected_Branch_Count: repo.branchProtectionRules.totalCount,
-    PR_Review_Count: repo.pullRequests.totalCount,
+    PR_Review_Count: prStats.prReviewCount,
     PR_Review_Comment_Count: prStats.prReviewCommentCount,
     Commit_Comment_Count: repo.commitComments.totalCount,
     Milestone_Count: repo.milestones.totalCount,

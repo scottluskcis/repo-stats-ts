@@ -191,12 +191,11 @@ export interface PullRequestStatsResult {
 export interface RepoStatsResult {
   Org_Name: string;
   Repo_Name: string;
-  Is_Empty?: boolean;
+  Is_Empty: boolean;
   Last_Push: string;
   Last_Update: string;
   isFork: boolean;
   isArchived: boolean;
-  Disk_Size_kb: number;
   Repo_Size_mb: number;
   Record_Count: number;
   Collaborator_Count: number;
@@ -216,8 +215,8 @@ export interface RepoStatsResult {
   Discussion_Count: number;
   Has_Wiki: boolean;
   Full_URL: string;
-  Migration_Issue?: boolean | null;
-  Created?: string | null;
+  Migration_Issue: boolean;
+  Created: string;
 }
 
 export interface RateLimitCheck {
