@@ -1,9 +1,9 @@
 export function generateRepoStatsFileName(orgName: string): string {
   const timestamp = new Date()
     .toISOString()
-    .replace(/[:\.]/g, '-')
-    .replace('T', '_');
-  return `${orgName.toLowerCase()}-repo-stats_${timestamp}.csv`;
+    .replace(/[-:T\.Z]/g, '')
+    .slice(0, 12);
+  return `${orgName.toLowerCase()}-all_repos-${timestamp}_ts.csv`;
 }
 
 export function convertKbToMb(valueInKb: number): number {
