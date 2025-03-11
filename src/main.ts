@@ -15,7 +15,6 @@ import {
 import { createLogger, logInitialization } from './logger.js';
 import { createAuthConfig } from './auth.js';
 import { initializeState, updateState } from './state.js';
-import { stringify } from 'csv-stringify/sync';
 import { appendFileSync, existsSync, writeFileSync } from 'fs';
 import { withRetry, RetryConfig } from './retry.js';
 import {
@@ -170,16 +169,16 @@ function initializeCsvFile(fileName: string, logger: Logger): void {
     'Collaborator_Count',
     'Protected_Branch_Count',
     'PR_Review_Count',
+    'Milestone_Count',
+    'Issue_Count',
+    'PR_Count',
     'PR_Review_Comment_Count',
     'Commit_Comment_Count',
-    'Milestone_Count',
-    'PR_Count',
+    'Issue_Comment_Count',
+    'Issue_Event_Count',
+    'Release_Count',
     'Project_Count',
     'Branch_Count',
-    'Release_Count',
-    'Issue_Count',
-    'Issue_Event_Count',
-    'Issue_Comment_Count',
     'Tag_Count',
     'Discussion_Count',
     'Has_Wiki',
@@ -190,7 +189,8 @@ function initializeCsvFile(fileName: string, logger: Logger): void {
 
   if (!existsSync(fileName)) {
     logger.info(`Creating new CSV file: ${fileName}`);
-    const headerRow = stringify([columns], { header: false });
+    // Create header row using same approach as data rows
+    const headerRow = `${columns.join(',')}\n`;
     writeFileSync(fileName, headerRow);
   } else {
     logger.info(`Using existing CSV file: ${fileName}`);
@@ -424,38 +424,6 @@ async function writeResultToCsv(
   logger: Logger,
 ): Promise<void> {
   try {
-    // Define columns in specific order matching mapToRepoStatsResult
-    const columns = [
-      'Org_Name',
-      'Repo_Name',
-      'Is_Empty',
-      'Last_Push',
-      'Last_Update',
-      'isFork',
-      'isArchived',
-      'Repo_Size_mb',
-      'Record_Count',
-      'Collaborator_Count',
-      'Protected_Branch_Count',
-      'PR_Review_Count',
-      'Milestone_Count',
-      'Issue_Count',
-      'PR_Count',
-      'PR_Review_Comment_Count',
-      'Commit_Comment_Count',
-      'Issue_Comment_Count',
-      'Issue_Event_Count',
-      'Release_Count',
-      'Project_Count',
-      'Branch_Count',
-      'Tag_Count',
-      'Discussion_Count',
-      'Has_Wiki',
-      'Full_URL',
-      'Migration_Issue',
-      'Created',
-    ];
-
     const formattedResult = {
       ...result,
       Is_Empty: result.Is_Empty?.toString().toUpperCase() || 'FALSE',
@@ -466,45 +434,42 @@ async function writeResultToCsv(
         result.Migration_Issue?.toString().toUpperCase() || 'FALSE',
     };
 
-    const csvRow = stringify(
-      [
-        [
-          // order is IMPORTANT here
-          formattedResult.Org_Name,
-          formattedResult.Repo_Name,
-          formattedResult.Is_Empty,
-          formattedResult.Last_Push,
-          formattedResult.Last_Update,
-          formattedResult.isFork,
-          formattedResult.isArchived,
-          formattedResult.Repo_Size_mb,
-          formattedResult.Record_Count,
-          formattedResult.Collaborator_Count,
-          formattedResult.Protected_Branch_Count,
-          formattedResult.PR_Review_Count,
-          formattedResult.Milestone_Count,
-          formattedResult.Issue_Count,
-          formattedResult.PR_Count,
-          formattedResult.PR_Review_Comment_Count,
-          formattedResult.Commit_Comment_Count,
-          formattedResult.Issue_Comment_Count,
-          formattedResult.Issue_Event_Count,
-          formattedResult.Release_Count,
-          formattedResult.Project_Count,
-          formattedResult.Branch_Count,
-          formattedResult.Tag_Count,
-          formattedResult.Discussion_Count,
-          formattedResult.Has_Wiki,
-          formattedResult.Full_URL,
-          formattedResult.Migration_Issue,
-          formattedResult.Created,
-        ],
-      ],
-      {
-        header: false,
-        columns: columns,
-      },
+    // Create CSV row manually to maintain strict order
+    const values = [
+      formattedResult.Org_Name,
+      formattedResult.Repo_Name,
+      formattedResult.Is_Empty,
+      formattedResult.Last_Push,
+      formattedResult.Last_Update,
+      formattedResult.isFork,
+      formattedResult.isArchived,
+      formattedResult.Repo_Size_mb,
+      formattedResult.Record_Count,
+      formattedResult.Collaborator_Count,
+      formattedResult.Protected_Branch_Count,
+      formattedResult.PR_Review_Count,
+      formattedResult.Milestone_Count,
+      formattedResult.Issue_Count,
+      formattedResult.PR_Count,
+      formattedResult.PR_Review_Comment_Count,
+      formattedResult.Commit_Comment_Count,
+      formattedResult.Issue_Comment_Count,
+      formattedResult.Issue_Event_Count,
+      formattedResult.Release_Count,
+      formattedResult.Project_Count,
+      formattedResult.Branch_Count,
+      formattedResult.Tag_Count,
+      formattedResult.Discussion_Count,
+      formattedResult.Has_Wiki,
+      formattedResult.Full_URL,
+      formattedResult.Migration_Issue,
+      formattedResult.Created,
+    ].map((value) =>
+      // Escape values containing commas with quotes
+      value?.toString().includes(',') ? `"${value}"` : value ?? '',
     );
+
+    const csvRow = `${values.join(',')}\n`;
     appendFileSync(fileName, csvRow);
 
     logger.debug(
