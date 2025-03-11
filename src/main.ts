@@ -363,12 +363,7 @@ async function* processRepoStats({
       }),
     ]);
 
-    const result = mapToRepoStatsResult(
-      repo,
-      issueStats,
-      prStats,
-      repo.owner.login,
-    );
+    const result = mapToRepoStatsResult(repo, issueStats, prStats);
     yield result;
   }
 }
@@ -489,7 +484,6 @@ function mapToRepoStatsResult(
   repo: RepositoryStats,
   issueStats: IssueStatsResult,
   prStats: PullRequestStatsResult,
-  orgName: string,
 ): RepoStatsResult {
   const repoSizeMb = convertKbToMb(repo.diskUsage);
   const totalRecordCount = calculateRecordCount(repo, issueStats, prStats);
@@ -518,8 +512,9 @@ function mapToRepoStatsResult(
     Branch_Count: repo.branches.totalCount,
     Release_Count: repo.releases.totalCount,
     Issue_Count: issueStats.totalIssuesCount,
-    Issue_Event_Count: issueStats.issueEventCount,
-    Issue_Comment_Count: issueStats.issueCommentCount,
+    Issue_Event_Count: issueStats.issueEventCount + prStats.issueEventCount,
+    Issue_Comment_Count:
+      issueStats.issueCommentCount + prStats.issueCommentCount,
     Tag_Count: repo.tags.totalCount,
     Discussion_Count: repo.discussions.totalCount,
     Has_Wiki: repo.hasWikiEnabled,
@@ -540,11 +535,13 @@ function calculateRecordCount(
     repo.pullRequests.totalCount,
     repo.milestones.totalCount,
     issueStats.totalIssuesCount,
-    repo.pullRequests.totalCount,
+    prStats.prReviewCount,
     prStats.prReviewCommentCount,
-    repo.commitComments.totalCount,
+    prStats.commitCommentCount,
     issueStats.issueCommentCount,
     issueStats.issueEventCount,
+    prStats.issueEventCount,
+    prStats.issueCommentCount,
     repo.releases.totalCount,
     repo.projects.totalCount,
   ];
