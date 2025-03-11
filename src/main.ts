@@ -491,6 +491,12 @@ function mapToRepoStatsResult(
     repoSizeMb,
     totalRecordCount,
   });
+
+  // For debugging the release count discrepancy
+  console.log(
+    `Repository ${repo.name} has ${repo.releases.totalCount} releases.`,
+  );
+
   return {
     Org_Name: repo.owner.login,
     Repo_Name: repo.name,
@@ -529,37 +535,23 @@ function calculateRecordCount(
   issueStats: IssueStatsResult,
   prStats: PullRequestStatsResult,
 ): number {
-  // Include all direct repository counts
-  const counts = [
-    // Basic repo entity counts
-    repo.collaborators.totalCount,
-    repo.branchProtectionRules.totalCount,
-    repo.pullRequests.totalCount,
-    repo.milestones.totalCount,
-    repo.projects.totalCount,
-    repo.releases.totalCount,
-    repo.branches.totalCount,
-    repo.tags.totalCount,
-    repo.discussions.totalCount,
-    repo.commitComments.totalCount,
-
-    // Issue-related counts
-    issueStats.totalIssuesCount,
-
-    // PR-related counts
-    prStats.prReviewCount,
-    prStats.prReviewCommentCount,
-
-    // Comment and event counts from both issues and PRs
-    issueStats.issueCommentCount,
-    issueStats.issueEventCount,
-    prStats.issueCommentCount,
-    prStats.issueEventCount,
-  ];
-
-  // Calculate total and ensure it matches the bash script logic
-  const allRecordCount = counts.reduce((sum, count) => sum + (count || 0), 0);
-  return allRecordCount;
+  // Following exactly how the bash script calculates the record count
+  return (
+    repo.collaborators.totalCount +
+    repo.branchProtectionRules.totalCount +
+    prStats.prReviewCount +
+    repo.milestones.totalCount +
+    issueStats.totalIssuesCount +
+    repo.pullRequests.totalCount +
+    prStats.prReviewCommentCount +
+    repo.commitComments.totalCount +
+    issueStats.issueCommentCount +
+    prStats.issueCommentCount +
+    issueStats.issueEventCount +
+    prStats.issueEventCount +
+    repo.releases.totalCount +
+    repo.projects.totalCount
+  );
 }
 
 async function analyzeIssues({
@@ -682,32 +674,35 @@ async function analyzePullRequests({
     // Check for potential issues with event counts
     const redundantEventCount =
       commentCount + (commitCount > 250 ? 250 : commitCount);
-    if (redundantEventCount > eventCount) {
-      logger.warn(
-        `Warning: More redundant events than timeline events for PR ${pr.number}!
-         eventCount: ${eventCount}
-         commentCount: ${commentCount}
-         commitCount: ${commitCount}`,
-      );
-    }
 
-    issueEventCount += eventCount - redundantEventCount;
+    // Calculate the adjusted event count
+    const adjustedEventCount = Math.max(0, eventCount - redundantEventCount);
+
+    issueEventCount += adjustedEventCount;
     issueCommentCount += commentCount;
     prReviewCount += reviewCount;
-    prReviewCommentCount += pr.reviews.nodes.reduce(
-      (sum, review) => sum + review.comments.totalCount,
-      0,
-    );
+
+    // Count review comments correctly - check each review node
+    let reviewCommentCount = 0;
+    for (const review of pr.reviews.nodes) {
+      reviewCommentCount += review.comments.totalCount;
+    }
+    prReviewCommentCount += reviewCommentCount;
+
     commitCommentCount += commitCount;
   }
 
   // Process additional pages if they exist
   if (
-    pullRequests.totalCount > 0 &&
     pullRequests.pageInfo.hasNextPage &&
     pullRequests.pageInfo.endCursor != null
   ) {
+    // Processing additional pages...
     const cursor = pullRequests.pageInfo.endCursor;
+    logger.debug(
+      `Fetching additional pull requests for ${repo} starting from cursor ${cursor}`,
+    );
+
     for await (const pr of client.getRepoPullRequests(
       owner,
       repo,
@@ -721,22 +716,21 @@ async function analyzePullRequests({
 
       const redundantEventCount =
         commentCount + (commitCount > 250 ? 250 : commitCount);
-      if (redundantEventCount > eventCount) {
-        logger.warn(
-          `Warning: More redundant events than timeline events for PR ${pr.number}!
-           eventCount: ${eventCount}
-           commentCount: ${commentCount}
-           commitCount: ${commitCount}`,
-        );
-      }
 
-      issueEventCount += eventCount - redundantEventCount;
+      // Calculate the adjusted event count
+      const adjustedEventCount = Math.max(0, eventCount - redundantEventCount);
+
+      issueEventCount += adjustedEventCount;
       issueCommentCount += commentCount;
       prReviewCount += reviewCount;
-      prReviewCommentCount += pr.reviews.nodes.reduce(
-        (sum, review) => sum + review.comments.totalCount,
-        0,
-      );
+
+      // Count review comments correctly for additional pages
+      let reviewCommentCount = 0;
+      for (const review of pr.reviews.nodes) {
+        reviewCommentCount += review.comments.totalCount;
+      }
+      prReviewCommentCount += reviewCommentCount;
+
       commitCommentCount += commitCount;
     }
   }
