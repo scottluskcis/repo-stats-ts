@@ -466,10 +466,45 @@ async function writeResultToCsv(
         result.Migration_Issue?.toString().toUpperCase() || 'FALSE',
     };
 
-    const csvRow = stringify([formattedResult], {
-      header: false,
-      columns: columns,
-    });
+    const csvRow = stringify(
+      [
+        [
+          // order is IMPORTANT here
+          formattedResult.Org_Name,
+          formattedResult.Repo_Name,
+          formattedResult.Is_Empty,
+          formattedResult.Last_Push,
+          formattedResult.Last_Update,
+          formattedResult.isFork,
+          formattedResult.isArchived,
+          formattedResult.Repo_Size_mb,
+          formattedResult.Record_Count,
+          formattedResult.Collaborator_Count,
+          formattedResult.Protected_Branch_Count,
+          formattedResult.PR_Review_Count,
+          formattedResult.Milestone_Count,
+          formattedResult.Issue_Count,
+          formattedResult.PR_Count,
+          formattedResult.PR_Review_Comment_Count,
+          formattedResult.Commit_Comment_Count,
+          formattedResult.Issue_Comment_Count,
+          formattedResult.Issue_Event_Count,
+          formattedResult.Release_Count,
+          formattedResult.Project_Count,
+          formattedResult.Branch_Count,
+          formattedResult.Tag_Count,
+          formattedResult.Discussion_Count,
+          formattedResult.Has_Wiki,
+          formattedResult.Full_URL,
+          formattedResult.Migration_Issue,
+          formattedResult.Created,
+        ],
+      ],
+      {
+        header: false,
+        columns: columns,
+      },
+    );
     appendFileSync(fileName, csvRow);
 
     logger.debug(
@@ -573,46 +608,46 @@ async function analyzeIssues({
   if (issues.totalCount <= 0) {
     logger.debug(`No issues found for repository: ${repo}`);
     return {
-      totalIssuesCount: 0,
+      totalIssuesCount: issues.totalCount,
       issueEventCount: 0,
       issueCommentCount: 0,
     };
   }
 
-  const totalIssuesCount = issues.totalCount;
+  let totalEventCount = 0;
+  let totalCommentCount = 0;
 
-  // Initialize counts
-  let issueEventCount = 0;
-  let issueCommentCount = 0;
-
-  // Process first page of results
+  // Process first page
   for (const issue of issues.nodes) {
     const eventCount = issue.timeline.totalCount;
     const commentCount = issue.comments.totalCount;
 
     // Calculate non-comment events by subtracting comments from total timeline events
-    issueEventCount += eventCount - commentCount;
-    issueCommentCount += commentCount;
+    totalEventCount += eventCount - commentCount;
+    totalCommentCount += commentCount;
   }
 
   // Process additional pages if they exist
   if (issues.pageInfo.hasNextPage && issues.pageInfo.endCursor != null) {
     logger.debug(`More pages of issues found for repository: ${repo}`);
-    const cursor = issues.pageInfo.endCursor;
 
     try {
-      for await (const issue of client.getRepoIssues(
+      // Get next page of issues using iterator
+      const nextPagesIterator = client.getRepoIssues(
         owner,
         repo,
         per_page,
-        cursor,
-      )) {
+        issues.pageInfo.endCursor,
+      );
+
+      // Process each issue from subsequent pages
+      for await (const issue of nextPagesIterator) {
         const eventCount = issue.timeline.totalCount;
         const commentCount = issue.comments.totalCount;
 
-        // Calculate non-comment events for each additional issue
-        issueEventCount += eventCount - commentCount;
-        issueCommentCount += commentCount;
+        // Calculate non-comment events by subtracting comments from total timeline events
+        totalEventCount += eventCount - commentCount;
+        totalCommentCount += commentCount;
       }
     } catch (error) {
       logger.error(
@@ -622,14 +657,13 @@ async function analyzeIssues({
       );
       throw error;
     }
-  } else {
-    logger.debug(`Gathered all issues from repository: ${repo}`);
   }
 
+  logger.debug(`Gathered all issues from repository: ${repo}`);
   return {
-    totalIssuesCount,
-    issueEventCount,
-    issueCommentCount,
+    totalIssuesCount: issues.totalCount,
+    issueEventCount: totalEventCount,
+    issueCommentCount: totalCommentCount,
   };
 }
 
