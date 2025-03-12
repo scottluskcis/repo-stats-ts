@@ -6,7 +6,7 @@ const LAST_STATE_FILE = 'last_known_state.json';
 function saveLastState(state: ProcessedPageState, logger: Logger): void {
   try {
     writeFileSync(LAST_STATE_FILE, JSON.stringify(state, null, 2));
-    logger.info(`Saved last state to ${LAST_STATE_FILE}`);
+    logger.debug(`Saved last state to ${LAST_STATE_FILE}`);
   } catch (error) {
     logger.error(`Failed to save last state: ${error}`);
   }
@@ -115,7 +115,7 @@ export function updateState({
   // Update cursor if provided and different from current
   if (newCursor && newCursor !== state.currentCursor) {
     state.currentCursor = newCursor;
-    logger.warn(
+    logger.debug(
       `Updated cursor to: ${state.currentCursor} for repo: ${repoName}`,
     );
   }
