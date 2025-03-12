@@ -95,8 +95,11 @@ export async function run(opts: Arguments): Promise<void> {
   const startTime = new Date();
   logger.info(`Started processing at: ${startTime.toISOString()}`);
 
-  let successCount = 0;
-  let retryCount = 0;
+  // Create a state object to track counts that can be modified by reference
+  const processingState = {
+    successCount: 0,
+    retryCount: 0,
+  };
 
   await withRetry(
     async () => {
@@ -105,8 +108,7 @@ export async function run(opts: Arguments): Promise<void> {
         logger,
         opts,
         processedState,
-        successCount,
-        retryCount,
+        state: processingState, // Pass the state object
         fileName,
       });
 
@@ -127,8 +129,8 @@ export async function run(opts: Arguments): Promise<void> {
           `Start time: ${startTime.toISOString()}\n` +
           `End time: ${endTime.toISOString()}\n` +
           `Total elapsed time: ${elapsedTime}\n` +
-          `Consecutive successful operations: ${result.successCount}\n` +
-          `Total retry attempts: ${result.retryCount}\n` +
+          `Consecutive successful operations: ${processingState.successCount}\n` +
+          `Total retry attempts: ${processingState.retryCount}\n` +
           `Processing completed successfully: ${processedState.completedSuccessfully}`,
       );
 
@@ -137,8 +139,8 @@ export async function run(opts: Arguments): Promise<void> {
     },
     retryConfig,
     (state) => {
-      retryCount++;
-      successCount = 0;
+      processingState.retryCount++; // Update the shared state object
+      processingState.successCount = 0;
       logger.warn(
         `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
           `Current cursor: ${processedState.currentCursor}, ` +
@@ -202,16 +204,14 @@ async function processRepositories({
   logger,
   opts,
   processedState,
-  successCount,
-  retryCount,
+  state,
   fileName,
 }: {
   client: OctokitClient;
   logger: Logger;
   opts: Arguments;
   processedState: ProcessedPageState;
-  successCount: number;
-  retryCount: number;
+  state: { successCount: number; retryCount: number };
   fileName: string;
 }): Promise<RepoProcessingResult> {
   logger.debug(
@@ -262,13 +262,13 @@ async function processRepositories({
         processedCount++;
 
         // Track successful processing
-        successCount++;
-        if (successCount >= successThreshold && retryCount > 0) {
+        state.successCount++;
+        if (state.successCount >= successThreshold && state.retryCount > 0) {
           logger.info(
-            `Reset retry count after ${successCount} successful operations`,
+            `Reset retry count after ${state.successCount} successful operations`,
           );
-          retryCount = 0;
-          successCount = 0;
+          state.retryCount = 0;
+          state.successCount = 0;
         }
 
         // Check rate limits after configured interval
@@ -286,7 +286,7 @@ async function processRepositories({
           }
         }
       } catch (error) {
-        successCount = 0;
+        state.successCount = 0;
         logger.error(`Failed processing repo ${result.Repo_Name}: ${error}`);
         processedState.currentCursor = processedState.lastSuccessfulCursor;
         throw error;
@@ -316,8 +316,8 @@ async function processRepositories({
     processedRepos: processedState.processedRepos,
     processedCount,
     isComplete,
-    successCount,
-    retryCount,
+    successCount: state.successCount,
+    retryCount: state.retryCount,
   };
 }
 
@@ -467,7 +467,7 @@ async function writeResultToCsv(
     const csvRow = `${values.join(',')}\n`;
     appendFileSync(fileName, csvRow);
 
-    logger.debug(
+    logger.info(
       `Successfully wrote result for repository: ${result.Repo_Name}`,
     );
   } catch (error) {
