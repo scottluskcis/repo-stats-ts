@@ -10,7 +10,7 @@ const { Option } = commander;
 
 repoStatsCommand
   .name('repo-stats')
-  .description('Command to run repo-stats')
+  .description('Gathers repo-stats for all repositories in an organization')
   .version(VERSION)
   .addOption(
     new Option(
@@ -122,6 +122,12 @@ repoStatsCommand
       '--resume-from-last-save',
       'Resume from the last saved state',
     ).env('RESUME_FROM_LAST_SAVE'),
+  )
+  .addOption(
+    new Option(
+      '--repo-list <file>',
+      'Path to file containing list of repositories to process (format: owner/repo_name)',
+    ).env('REPO_LIST'),
   )
   .action(async (options: Arguments) => {
     console.log('Version:', VERSION);

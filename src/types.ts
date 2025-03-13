@@ -38,6 +38,11 @@ export interface Arguments {
   retrySuccessThreshold?: number;
 
   resumeFromLastSave?: boolean;
+
+  // output
+  outputFileName?: string;
+
+  repoList?: string;
 }
 
 export type AuthResponse = {
