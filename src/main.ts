@@ -23,6 +23,8 @@ import {
   checkIfHasMigrationIssues,
   formatElapsedTime,
 } from './utils.js';
+import { readFileSync } from 'fs';
+import { parse } from 'csv-parse/sync';
 
 const _init = async (
   opts: Arguments,
@@ -108,7 +110,7 @@ export async function run(opts: Arguments): Promise<void> {
         logger,
         opts,
         processedState,
-        state: processingState, // Pass the state object
+        state: processingState,
         fileName,
       });
 
@@ -135,11 +137,24 @@ export async function run(opts: Arguments): Promise<void> {
       );
 
       updateState({ state: processedState, logger });
+
+      // Check for and process missing repositories if enabled
+      if (opts.autoProcessMissing && result.isComplete) {
+        await processMissingRepositories({
+          opts,
+          fileName,
+          client,
+          logger,
+          processedState,
+          retryConfig,
+        });
+      }
+
       return result;
     },
     retryConfig,
     (state) => {
-      processingState.retryCount++; // Update the shared state object
+      processingState.retryCount++;
       processingState.successCount = 0;
       logger.warn(
         `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
@@ -155,6 +170,98 @@ export async function run(opts: Arguments): Promise<void> {
       updateState({ state: processedState, logger });
     },
   );
+}
+
+async function processMissingRepositories({
+  opts,
+  fileName,
+  client,
+  logger,
+  processedState,
+  retryConfig,
+}: {
+  opts: Arguments;
+  fileName: string;
+  client: OctokitClient;
+  logger: Logger;
+  processedState: ProcessedPageState;
+  retryConfig: RetryConfig;
+}): Promise<void> {
+  logger.info('Checking for missing repositories...');
+  const missingReposResult = await checkForMissingRepos({
+    opts,
+    processedFile: fileName,
+  });
+
+  const missingReposCount = missingReposResult.missingRepos.length;
+  if (missingReposCount === 0) {
+    logger.info(
+      'No missing repositories found. All repositories have been processed.',
+    );
+    return;
+  }
+
+  logger.info(
+    `Found ${missingReposCount} missing repositories that need to be processed`,
+  );
+
+  // Create temporary file with missing repos
+  const missingReposFile = `${
+    opts.orgName
+  }-missing-repos-${new Date().getTime()}.txt`;
+  writeFileSync(
+    missingReposFile,
+    missingReposResult.missingRepos
+      .map((repo) => `${opts.orgName}/${repo}`)
+      .join('\n'),
+  );
+  logger.info(`Created temporary file with missing repos: ${missingReposFile}`);
+
+  try {
+    // Process the missing repos
+    logger.info('Processing missing repositories...');
+    const missingReposProcessingState = {
+      successCount: 0,
+      retryCount: 0,
+    };
+
+    await withRetry(
+      async () => {
+        const missingResult = await processRepositoriesFromFile({
+          client,
+          logger,
+          opts: { ...opts, repoList: missingReposFile },
+          processedState,
+          state: missingReposProcessingState,
+          fileName,
+        });
+
+        logger.info(
+          `Completed processing ${missingResult.processedCount} out of ${missingReposCount} missing repositories`,
+        );
+
+        return missingResult;
+      },
+      retryConfig,
+      (state) => {
+        missingReposProcessingState.retryCount++;
+        missingReposProcessingState.successCount = 0;
+        logger.warn(
+          `Retry attempt ${state.attempt}: Failed while processing missing repositories. ` +
+            `Error: ${state.error?.message}`,
+        );
+      },
+    );
+
+    logger.info('Completed processing of missing repositories');
+  } finally {
+    // Clean up temporary file
+    if (existsSync(missingReposFile)) {
+      const fs = require('fs');
+      fs.unlinkSync(missingReposFile);
+      logger.info(`Removed temporary file: ${missingReposFile}`);
+    }
+  }
 }
 
 function initializeCsvFile(fileName: string, logger: Logger): void {
@@ -199,6 +306,205 @@ function initializeCsvFile(fileName: string, logger: Logger): void {
   }
 }
 
+async function analyzeRepositoryStats({
+  repo,
+  owner,
+  extraPageSize,
+  client,
+  logger,
+}: {
+  repo: RepositoryStats;
+  owner: string;
+  extraPageSize: number;
+  client: OctokitClient;
+  logger: Logger;
+}): Promise<RepoStatsResult> {
+  // Run issue and PR analysis concurrently
+  const [issueStats, prStats] = await Promise.all([
+    analyzeIssues({
+      owner,
+      repo: repo.name,
+      per_page: extraPageSize,
+      issues: repo.issues,
+      client,
+      logger,
+    }),
+    analyzePullRequests({
+      owner,
+      repo: repo.name,
+      per_page: extraPageSize,
+      pullRequests: repo.pullRequests,
+      client,
+      logger,
+    }),
+  ]);
+
+  return mapToRepoStatsResult(repo, issueStats, prStats);
+}
+
+async function* processRepoStats({
+  reposIterator,
+  client,
+  logger,
+  extraPageSize,
+  processedState,
+}: {
+  reposIterator: AsyncGenerator<RepositoryStats, void, unknown>;
+  client: OctokitClient;
+  logger: Logger;
+  extraPageSize: number;
+  processedState: ProcessedPageState;
+}): AsyncGenerator<RepoStatsResult> {
+  for await (const repo of reposIterator) {
+    if (repo.pageInfo?.endCursor) {
+      updateState({
+        state: processedState,
+        newCursor: repo.pageInfo.endCursor,
+        logger,
+      });
+    }
+
+    const result = await analyzeRepositoryStats({
+      repo,
+      owner: repo.owner.login,
+      extraPageSize,
+      client,
+      logger,
+    });
+
+    yield result;
+  }
+}
+
+async function handleRepoProcessingSuccess({
+  result,
+  processedState,
+  state,
+  opts,
+  client,
+  logger,
+  processedCount,
+  currentCursor = null,
+}: {
+  result: RepoStatsResult;
+  processedState: ProcessedPageState;
+  state: { successCount: number; retryCount: number };
+  opts: Arguments;
+  client: OctokitClient;
+  logger: Logger;
+  processedCount: number;
+  currentCursor?: string | null;
+}): Promise<void> {
+  const successThreshold = opts.retrySuccessThreshold || 5;
+
+  // Track successful processing
+  state.successCount++;
+  if (state.successCount >= successThreshold && state.retryCount > 0) {
+    logger.info(
+      `Reset retry count after ${state.successCount} successful operations`,
+    );
+    state.retryCount = 0;
+    state.successCount = 0;
+  }
+
+  updateState({
+    state: processedState,
+    repoName: result.Repo_Name,
+    lastSuccessfulCursor: currentCursor,
+    logger,
+  });
+
+  // Check rate limits after configured interval
+  if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
+    const rateLimitReached = await checkAndHandleRateLimits({
+      client,
+      logger,
+      processedCount,
+    });
+
+    if (rateLimitReached) {
+      throw new Error(
+        'Rate limit reached. Processing will be paused until limits reset.',
+      );
+    }
+  }
+}
+
+async function processRepositoriesFromFile({
+  client,
+  logger,
+  opts,
+  processedState,
+  state,
+  fileName,
+}: {
+  client: OctokitClient;
+  logger: Logger;
+  opts: Arguments;
+  processedState: ProcessedPageState;
+  state: { successCount: number; retryCount: number };
+  fileName: string;
+}): Promise<RepoProcessingResult> {
+  logger.info(`Processing repositories from list: ${opts.repoList}`);
+  const repoList = readFileSync(opts.repoList!, 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => {
+      const [owner, repo] = line.trim().split('/');
+      return { owner, repo };
+    });
+
+  let processedCount = 0;
+
+  for (const { owner, repo } of repoList) {
+    try {
+      if (processedState.processedRepos.includes(repo)) {
+        logger.debug(`Skipping already processed repository: ${repo}`);
+        continue;
+      }
+
+      const repoStats = await client.getRepoStats(
+        owner,
+        repo,
+        opts.pageSize || 10,
+      );
+
+      const result = await analyzeRepositoryStats({
+        repo: repoStats,
+        owner,
+        extraPageSize: opts.extraPageSize || 50,
+        client,
+        logger,
+      });
+
+      await writeResultToCsv(result, fileName, logger);
+
+      await handleRepoProcessingSuccess({
+        result,
+        processedState,
+        state,
+        opts,
+        client,
+        logger,
+        processedCount: ++processedCount,
+      });
+    } catch (error) {
+      state.successCount = 0;
+      logger.error(`Failed processing repo ${repo}: ${error}`);
+      throw error;
+    }
+  }
+
+  return {
+    cursor: null,
+    processedRepos: processedState.processedRepos,
+    processedCount,
+    isComplete: true,
+    successCount: state.successCount,
+    retryCount: state.retryCount,
+  };
+}
+
 async function processRepositories({
   client,
   logger,
@@ -218,6 +524,17 @@ async function processRepositories({
     `Starting/Resuming from cursor: ${processedState.currentCursor}`,
   );
 
+  if (opts.repoList) {
+    return processRepositoriesFromFile({
+      client,
+      logger,
+      opts,
+      processedState,
+      state,
+      fileName,
+    });
+  }
+
   // Use lastSuccessfulCursor only if cursor is null (first try)
   const startCursor =
     processedState.currentCursor || processedState.lastSuccessfulCursor;
@@ -230,8 +547,6 @@ async function processRepositories({
   );
 
   let processedCount = 0;
-  const successThreshold = opts.retrySuccessThreshold || 5;
-
   let iterationComplete = false;
 
   try {
@@ -252,39 +567,16 @@ async function processRepositories({
 
         await writeResultToCsv(result, fileName, logger);
 
-        updateState({
-          state: processedState,
-          repoName: result.Repo_Name,
-          lastSuccessfulCursor: processedState.currentCursor,
+        await handleRepoProcessingSuccess({
+          result,
+          processedState,
+          state,
+          opts,
+          client,
           logger,
+          processedCount: ++processedCount,
+          currentCursor: processedState.currentCursor,
         });
-
-        processedCount++;
-
-        // Track successful processing
-        state.successCount++;
-        if (state.successCount >= successThreshold && state.retryCount > 0) {
-          logger.info(
-            `Reset retry count after ${state.successCount} successful operations`,
-          );
-          state.retryCount = 0;
-          state.successCount = 0;
-        }
-
-        // Check rate limits after configured interval
-        if (processedCount % (opts.rateLimitCheckInterval || 10) === 0) {
-          const rateLimitReached = await checkAndHandleRateLimits({
-            client,
-            logger,
-            processedCount,
-          });
-
-          if (rateLimitReached) {
-            throw new Error(
-              'Rate limit reached. Processing will be paused until limits reset.',
-            );
-          }
-        }
       } catch (error) {
         state.successCount = 0;
         logger.error(`Failed processing repo ${result.Repo_Name}: ${error}`);
@@ -319,53 +611,6 @@ async function processRepositories({
     successCount: state.successCount,
     retryCount: state.retryCount,
   };
-}
-
-async function* processRepoStats({
-  reposIterator,
-  client,
-  logger,
-  extraPageSize,
-  processedState,
-}: {
-  reposIterator: AsyncGenerator<RepositoryStats, void, unknown>;
-  client: OctokitClient;
-  logger: Logger;
-  extraPageSize: number;
-  processedState: ProcessedPageState;
-}): AsyncGenerator<RepoStatsResult> {
-  for await (const repo of reposIterator) {
-    if (repo.pageInfo?.endCursor) {
-      updateState({
-        state: processedState,
-        newCursor: repo.pageInfo.endCursor,
-        logger,
-      });
-    }
-
-    // Run issue and PR analysis concurrently
-    const [issueStats, prStats] = await Promise.all([
-      analyzeIssues({
-        owner: repo.owner.login,
-        repo: repo.name,
-        per_page: extraPageSize,
-        issues: repo.issues,
-        client,
-        logger,
-      }),
-      analyzePullRequests({
-        owner: repo.owner.login,
-        repo: repo.name,
-        per_page: extraPageSize,
-        pullRequests: repo.pullRequests,
-        client,
-        logger,
-      }),
-    ]);
-
-    const result = mapToRepoStatsResult(repo, issueStats, prStats);
-    yield result;
-  }
 }
 
 async function checkAndHandleRateLimits({
@@ -731,4 +976,58 @@ async function analyzePullRequests({
     issueCommentCount,
     prReviewCount,
   };
+}
+
+export async function checkForMissingRepos({
+  opts,
+  processedFile,
+}: {
+  opts: Arguments;
+  processedFile: string;
+}): Promise<{
+  missingRepos: string[];
+}> {
+  const { logger, client } = await _init(opts);
+  const org = opts.orgName.toLowerCase();
+  const per_page = opts.pageSize || 10;
+
+  logger.debug(`Checking for missing repositories in organization: ${org}`);
+
+  logger.info(
+    `Reading processed file: ${processedFile} to check for missing repositories`,
+  );
+  const fileContent = readFileSync(processedFile, 'utf-8');
+  const records = parse(fileContent, {
+    columns: true,
+    skip_empty_lines: true,
+  });
+
+  logger.debug(`Parsed ${records.length} records from processed file`);
+  const processedReposSet = new Set<string>();
+  records.forEach((record: { Repo_Name: string }) => {
+    processedReposSet.add(record.Repo_Name.toLowerCase());
+  });
+
+  // file name of output file with missing repos with datetime suffix
+  const missingReposFileName = `${org}-missing-repos-${
+    new Date().toISOString().split('T')[0]
+  }-${new Date().toISOString().split('T')[1].split(':')[0]}-${
+    new Date().toISOString().split('T')[1].split(':')[1]
+  }.csv`;
+
+  logger.info('Checking for missing repositories in the organization');
+  const missingRepos = [];
+  for await (const repo of client.listReposForOrg(org, per_page)) {
+    if (processedReposSet.has(repo.name.toLowerCase())) {
+      continue;
+    } else {
+      missingRepos.push(repo.name);
+      // write to csv file append
+      const csvRow = `${repo.name}\n`;
+      appendFileSync(missingReposFileName, csvRow);
+    }
+  }
+  logger.info(`Found ${missingRepos.length} missing repositories`);
+
+  return { missingRepos };
 }

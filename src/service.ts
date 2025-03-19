@@ -50,12 +50,12 @@ export class OctokitClient {
     }
   }
 
+  // all repos in an org
   async *getOrgRepoStats(
     org: string,
     per_page: number,
     cursor: string | null = null,
   ): AsyncGenerator<RepositoryStats, void, unknown> {
-    const IS_EMPTY_FLAG = 'isEmpty';
     const query = `
       query orgRepoStats($login: String!, $pageSize: Int!, $cursor: String) {
         organization(login: $login) {
@@ -84,7 +84,6 @@ export class OctokitClient {
                 totalCount
               }
               hasWikiEnabled
-              ${IS_EMPTY_FLAG}
               isFork
               isArchived
               issues(first: $pageSize) {
@@ -171,6 +170,119 @@ export class OctokitClient {
         yield { ...repo, pageInfo };
       }
     }
+  }
+
+  // individual repo stats
+  async getRepoStats(
+    owner: string,
+    repo: string,
+    per_page: number,
+  ): Promise<RepositoryStats> {
+    const query = `
+      query repoStats($owner: String!, $name: String!, $pageSize: Int!) {
+        repository(owner: $owner, name: $name) {
+          branches: refs(refPrefix:"refs/heads/") {
+            totalCount
+          }
+          branchProtectionRules {
+            totalCount
+          }
+          commitComments {
+            totalCount
+          }
+          collaborators {
+            totalCount
+          }
+          createdAt
+          diskUsage
+          discussions {
+            totalCount
+          }
+          hasWikiEnabled
+          isFork
+          isArchived
+          issues(first: $pageSize) {
+            totalCount
+            pageInfo {
+              endCursor
+              hasNextPage
+            }
+            nodes {
+              timeline {
+                totalCount
+              }
+              comments {
+                totalCount
+              }
+            }
+          }
+          milestones {
+            totalCount
+          }
+          name
+          owner {
+            login
+          }
+          projects {
+            totalCount
+          }
+          pullRequests(first: $pageSize) {
+            totalCount
+            pageInfo {
+              endCursor
+              hasNextPage
+            }
+            nodes {
+              comments {
+                totalCount
+              }
+              commits {
+                totalCount
+              }
+              number
+              reviews(first: $pageSize) {
+                totalCount
+                pageInfo {
+                  endCursor
+                  hasNextPage
+                }
+                nodes {
+                  comments {
+                    totalCount
+                  }
+                }
+              }
+              timeline {
+                totalCount
+              }
+            }
+          }
+          pushedAt
+          releases {
+            totalCount
+          }
+          tags: refs(refPrefix: "refs/tags/") {
+            totalCount
+          }
+          updatedAt
+          url
+        }
+      }`;
+
+    const response = await this.octokit.graphql<any>(query, {
+      owner,
+      name: repo,
+      pageSize: per_page,
+    });
+
+    // Create a pageInfo object to maintain consistency with getOrgRepoStats
+    const pageInfo = {
+      endCursor: null,
+      hasNextPage: false,
+      startCursor: null,
+    };
+
+    return { ...response.repository, pageInfo };
   }
 
   async *getRepoIssues(
