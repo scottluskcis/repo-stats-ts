@@ -1,4 +1,4 @@
-This application will be used to gather repository statistics for repositories that exist in GitHub. Collection of the results should always try and leverage an approach that is performant, retrieves results incrementally, and provides the ability to retry when failures occur.
+This application will be used to gather repository statistics for repositories that exist in GitHub. Collection of the results should always try and leverage an approach that is performant, retrieves results incrementally, and provides the ability to retry when failures occur. Use Async Generators, await/async, and patterns that help with processing large amounts of data whenever possible.
 
 Take into consideration the following then providing responses:
 
