@@ -43,6 +43,7 @@ export interface Arguments {
   outputFileName?: string;
 
   repoList?: string;
+  autoProcessMissing?: boolean;
 }
 
 export type AuthResponse = {

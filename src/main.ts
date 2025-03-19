@@ -110,7 +110,7 @@ export async function run(opts: Arguments): Promise<void> {
         logger,
         opts,
         processedState,
-        state: processingState, // Pass the state object
+        state: processingState,
         fileName,
       });
 
@@ -137,11 +137,24 @@ export async function run(opts: Arguments): Promise<void> {
       );
 
       updateState({ state: processedState, logger });
+
+      // Check for and process missing repositories if enabled
+      if (opts.autoProcessMissing && result.isComplete) {
+        await processMissingRepositories({
+          opts,
+          fileName,
+          client,
+          logger,
+          processedState,
+          retryConfig,
+        });
+      }
+
       return result;
     },
     retryConfig,
     (state) => {
-      processingState.retryCount++; // Update the shared state object
+      processingState.retryCount++;
       processingState.successCount = 0;
       logger.warn(
         `Retry attempt ${state.attempt}: Failed while processing repositories. ` +
@@ -157,6 +170,98 @@ export async function run(opts: Arguments): Promise<void> {
       updateState({ state: processedState, logger });
     },
   );
+}
+
+async function processMissingRepositories({
+  opts,
+  fileName,
+  client,
+  logger,
+  processedState,
+  retryConfig,
+}: {
+  opts: Arguments;
+  fileName: string;
+  client: OctokitClient;
+  logger: Logger;
+  processedState: ProcessedPageState;
+  retryConfig: RetryConfig;
+}): Promise<void> {
+  logger.info('Checking for missing repositories...');
+  const missingReposResult = await checkForMissingRepos({
+    opts,
+    processedFile: fileName,
+  });
+
+  const missingReposCount = missingReposResult.missingRepos.length;
+  if (missingReposCount === 0) {
+    logger.info(
+      'No missing repositories found. All repositories have been processed.',
+    );
+    return;
+  }
+
+  logger.info(
+    `Found ${missingReposCount} missing repositories that need to be processed`,
+  );
+
+  // Create temporary file with missing repos
+  const missingReposFile = `${
+    opts.orgName
+  }-missing-repos-${new Date().getTime()}.txt`;
+  writeFileSync(
+    missingReposFile,
+    missingReposResult.missingRepos
+      .map((repo) => `${opts.orgName}/${repo}`)
+      .join('\n'),
+  );
+  logger.info(`Created temporary file with missing repos: ${missingReposFile}`);
+
+  try {
+    // Process the missing repos
+    logger.info('Processing missing repositories...');
+    const missingReposProcessingState = {
+      successCount: 0,
+      retryCount: 0,
+    };
+
+    await withRetry(
+      async () => {
+        const missingResult = await processRepositoriesFromFile({
+          client,
+          logger,
+          opts: { ...opts, repoList: missingReposFile },
+          processedState,
+          state: missingReposProcessingState,
+          fileName,
+        });
+
+        logger.info(
+          `Completed processing ${missingResult.processedCount} out of ${missingReposCount} missing repositories`,
+        );
+
+        return missingResult;
+      },
+      retryConfig,
+      (state) => {
+        missingReposProcessingState.retryCount++;
+        missingReposProcessingState.successCount = 0;
+        logger.warn(
+          `Retry attempt ${state.attempt}: Failed while processing missing repositories. ` +
+            `Error: ${state.error?.message}`,
+        );
+      },
+    );
+
+    logger.info('Completed processing of missing repositories');
+  } finally {
+    // Clean up temporary file
+    if (existsSync(missingReposFile)) {
+      const fs = require('fs');
+      fs.unlinkSync(missingReposFile);
+      logger.info(`Removed temporary file: ${missingReposFile}`);
+    }
+  }
 }
 
 function initializeCsvFile(fileName: string, logger: Logger): void {

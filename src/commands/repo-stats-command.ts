@@ -129,6 +129,12 @@ repoStatsCommand
       'Path to file containing list of repositories to process (format: owner/repo_name)',
     ).env('REPO_LIST'),
   )
+  .addOption(
+    new Option(
+      '--auto-process-missing',
+      'Automatically process any missing repositories when main processing is complete',
+    ).env('AUTO_PROCESS_MISSING'),
+  )
   .action(async (options: Arguments) => {
     console.log('Version:', VERSION);
 
