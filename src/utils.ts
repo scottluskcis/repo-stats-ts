@@ -6,12 +6,16 @@ export function generateRepoStatsFileName(orgName: string): string {
   return `${orgName.toLowerCase()}-all_repos-${timestamp}_ts.csv`;
 }
 
-export function convertKbToMb(valueInKb: number): number {
-  if (!Number.isFinite(valueInKb)) {
-    throw new Error(`Invalid input: ${valueInKb} is not a number`);
+/**
+ * Converts kilobytes to megabytes
+ * @param kb Size in kilobytes, can be null or undefined
+ * @returns Size in megabytes
+ */
+export function convertKbToMb(kb: number | null | undefined): number {
+  if (kb == null) {
+    return 0;
   }
-
-  return Math.floor(valueInKb / 1024);
+  return kb / 1024;
 }
 
 export function checkIfHasMigrationIssues({
