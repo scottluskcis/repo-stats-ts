@@ -1,0 +1,12 @@
+{
+  "jest.jestCommandLine": "npx jest",
+  "jest.runMode": "on-demand",
+  "jest.debugMode": true,
+  "javascript.validate.enable": true,
+  "typescript.validate.enable": true,
+  "js/ts.implicitProjectConfig.experimentalDecorators": true,
+  "eslint.validate": ["typescript", "typescriptreact"],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "always"
+  }
+}

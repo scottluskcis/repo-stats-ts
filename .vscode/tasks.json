@@ -10,6 +10,33 @@
         "isDefault": true
       },
       "label": "tsc: build"
+    },
+    {
+      "type": "shell",
+      "command": "npx",
+      "args": ["jest", "--verbose", "${file}"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "label": "jest: test current file",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": ["$jest"]
+    },
+    {
+      "type": "shell",
+      "command": "npx",
+      "args": ["jest", "--verbose"],
+      "group": "test",
+      "label": "jest: test all",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": ["$jest"]
     }
   ]
 }
