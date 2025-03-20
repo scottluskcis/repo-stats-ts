@@ -35,7 +35,7 @@ function loadLastState(logger: Logger): ProcessedPageState | null {
 
       return {
         ...parsedState,
-        currentCursor: parsedState.cursor || null,
+        currentCursor: parsedState.currentCursor || null,
         lastSuccessfulCursor: parsedState.lastSuccessfulCursor || null,
         lastProcessedRepo: parsedState.lastProcessedRepo || null,
         lastUpdated: parsedState.lastSuccessTimestamp || null,
