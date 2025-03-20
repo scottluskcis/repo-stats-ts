@@ -26,6 +26,10 @@ logs/
 *.queue.txt
 *-retry-queue.txt
 
+# Ignore keys and output directories
 keys/
 output/
 *_state.json
+
+# Ignore test coverage reports
+coverage/
